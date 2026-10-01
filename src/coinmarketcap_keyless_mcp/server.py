@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib.metadata import version
 from typing import Any
 
@@ -11,7 +13,7 @@ from pydantic import Field
 
 from .client import KeylessHttpClient
 from .contracts import ROUTES, TOOL_CONTRACTS
-from .errors import CmcClientError
+from .errors import CmcClientError, ErrorCode
 from .models import (
     Ids,
     IndexInterval,
@@ -35,6 +37,20 @@ def _description(name: str) -> str:
     return next(contract.description for contract in TOOL_CONTRACTS if contract.name == name)
 
 
+@contextmanager
+def _invalid_argument() -> Iterator[None]:
+    """Report a cross-field validation failure as INVALID_ARGUMENT with its message.
+
+    MCP SDK 2.2 hides the text of any non-ToolError exception raised inside a tool,
+    so local validation must surface as a ToolError to stay classifiable.
+    """
+
+    try:
+        yield
+    except ValueError as exc:
+        raise ToolError(f"{ErrorCode.INVALID_ARGUMENT}: {exc}") from exc
+
+
 def _query_selector(name: str, values: list[Any]) -> tuple[str, str]:
     return {"ids": "id", "slugs": "slug", "symbols": "symbol"}[name], ",".join(
         str(value) for value in values
@@ -51,7 +67,8 @@ def _index_history_params(
     """
 
     start, end = time_start or None, time_end or None
-    validate_time_bounds(start, end)
+    with _invalid_argument():
+        validate_time_bounds(start, end)
     params: dict[str, Any] = {"count": count, "interval": interval}
     if start is not None:
         params["time_start"] = start
@@ -84,16 +101,22 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         sort: MapSort = "id",
         symbols: UniqueSymbols = Field(default_factory=list),
     ) -> ProviderEnvelope:
+        with _invalid_argument():
+            if symbols:
+                require_unique(symbols, "symbols")
+                if listing_status != ["active"] or start != 1 or limit != 100 or sort != "id":
+                    raise ValueError(
+                        "symbols cannot be combined with explicit listing_status, start, limit, "
+                        "or sort"
+                    )
+            else:
+                require_unique(listing_status, "listing_status")
+                if any(
+                    value not in {"active", "inactive", "untracked"} for value in listing_status
+                ):
+                    raise ValueError("listing_status contains an unsupported value")
         if symbols:
-            require_unique(symbols, "symbols")
-            if listing_status != ["active"] or start != 1 or limit != 100 or sort != "id":
-                raise ValueError(
-                    "symbols cannot be combined with explicit listing_status, start, limit, or sort"
-                )
             return await get(ROUTES["cmc_crypto_map"], {"symbol": ",".join(symbols)})
-        require_unique(listing_status, "listing_status")
-        if any(value not in {"active", "inactive", "untracked"} for value in listing_status):
-            raise ValueError("listing_status contains an unsupported value")
         return await get(
             ROUTES["cmc_crypto_map"],
             {
@@ -111,7 +134,8 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         symbols: Symbols = Field(default_factory=list),
         skip_invalid: bool = False,
     ) -> ProviderEnvelope:
-        name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
+        with _invalid_argument():
+            name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
         key, value = _query_selector(name, values)
         return await get(ROUTES["cmc_crypto_info"], {key: value, "skip_invalid": skip_invalid})
 
@@ -123,8 +147,9 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         convert: UniqueConversions = Field(default=["USD"]),
         skip_invalid: bool = False,
     ) -> ProviderEnvelope:
-        name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
-        require_unique(convert, "convert")
+        with _invalid_argument():
+            name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
+            require_unique(convert, "convert")
         key, value = _query_selector(name, values)
         return await get(
             ROUTES["cmc_quotes_latest"],
@@ -139,7 +164,8 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         sort: ListingSort = "market_cap",
         sort_dir: SortDirection = "desc",
     ) -> ProviderEnvelope:
-        require_unique(convert, "convert")
+        with _invalid_argument():
+            require_unique(convert, "convert")
         return await get(
             ROUTES["cmc_listings_latest"],
             {
@@ -157,7 +183,8 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     async def cmc_global_metrics_latest(
         convert: UniqueConversions = Field(default=["USD"]),
     ) -> ProviderEnvelope:
-        require_unique(convert, "convert")
+        with _invalid_argument():
+            require_unique(convert, "convert")
         return await get(ROUTES["cmc_global_metrics_latest"], {"convert": ",".join(convert)})
 
     @server.tool(name="cmc_fear_greed_latest", description=_description("cmc_fear_greed_latest"))
@@ -250,7 +277,7 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
             field in _provided_fields for field in ("listing_status", "start", "limit", "sort")
         ):
             raise ToolError(
-                "symbols cannot be combined with explicit listing_status, start, limit, or sort"
+                f"{ErrorCode.INVALID_ARGUMENT}: symbols cannot be combined with explicit listing_status, start, limit, or sort"
             )
         return await original_map_fn(**kwargs)
 
