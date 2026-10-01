@@ -1,9 +1,9 @@
 # PLAN.md — `coinmarketcap-keyless-mcp`
 
-**Status:** PROPOSED  
-**Audience:** Codex CLI / repository-maintaining coding agents  
-**Document date:** 2026-09-30  
-**Implementation state:** No implementation authorized by this plan itself; this document defines the implementation contract.  
+**Status:** IMPLEMENTED (v1, package version 1.0.2; see `verification/release-1.0.2.md`)\
+**Audience:** repository-maintaining coding agents (Codex CLI, Claude Code) and human maintainers\
+**Document date:** 2026-09-30 (header updated 2026-10-01)\
+**Implementation state:** Implemented. This document remains the normative contract for tools, schemas, routes, errors and release gates. Section 5 is the original target tree; the actual layout differs (no `config.py`, `cache.py`, `tools/` or `tests/live/`; caching lives in `client.py`, tools in `server.py`).
 
 ---
 
