@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Cross-field validation failures (selectors, duplicate values, timestamps, map argument combinations) now reach MCP clients as `INVALID_ARGUMENT: <reason>`. MCP SDK 2.2 previously reported them as a generic, unclassified tool crash.
+- Only HTTP 2xx responses can succeed. Redirects (3xx) with a success-shaped body are `UPSTREAM_HTTP_ERROR`, never success, and are never cached.
+- `NaN`, `Infinity`, `-Infinity` and numbers that overflow a finite float (such as `1e400`) are rejected as `UPSTREAM_CONTRACT_MISMATCH` instead of being returned and cached.
+- Compressed responses must end with a complete stream: a gzip body missing its CRC/length trailer, or a deflate body cut short, is `UPSTREAM_CONTRACT_MISMATCH` even when the decoded prefix is valid JSON.
+- `verify_live` checks endpoint-specific minimum fields and types taken from CoinMarketCap's published response schemas, instead of accepting any non-empty object or list. Live capability must be requalified with the stricter checks.
+
 ## 1.0.2
 
 - CI runs mutmut and fails if the mutation score (killed + timeout) drops below 92%. Reviewing the surviving mutants added `tests/unit/test_client_contract.py` and widened mutmut's test selection; the score went from 61.6% to 93.0%, and the 70 remaining survivors are all equivalent (see `verification/mutation-survivors.md`). Removed the unused `_cache_enabled` attribute and an unreachable empty-selector check.

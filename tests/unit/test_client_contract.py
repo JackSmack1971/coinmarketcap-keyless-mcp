@@ -192,6 +192,99 @@ ERROR_CASES = {
             None,
         ),
     ),
+    "nan-constant": (
+        _body(b'{"status":{"error_code":0},"data":{"price":NaN}}'),
+        (
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response was not valid JSON",
+            200,
+            1,
+            None,
+        ),
+    ),
+    "infinity-constant": (
+        _body(b'{"status":{"error_code":0},"data":{"price":-Infinity}}'),
+        (
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response was not valid JSON",
+            200,
+            1,
+            None,
+        ),
+    ),
+    "float-overflow": (
+        _body(b'{"status":{"error_code":0},"data":{"price":1e400}}'),
+        (
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response was not valid JSON",
+            200,
+            1,
+            None,
+        ),
+    ),
+    "truncated-gzip": (
+        _body(gzip.compress(json.dumps(VALID).encode())[:-8], headers={"Content-Encoding": "gzip"}),
+        (
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response has invalid compressed data",
+            200,
+            1,
+            None,
+        ),
+    ),
+    "truncated-deflate": (
+        _body(
+            zlib.compress(json.dumps(VALID).encode())[:-4], headers={"Content-Encoding": "deflate"}
+        ),
+        (
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response has invalid compressed data",
+            200,
+            1,
+            None,
+        ),
+    ),
+    "redirect-301": (
+        _body(json.dumps(VALID).encode(), 301, {"Location": "https://example.invalid/"}),
+        (
+            ErrorCode.UPSTREAM_HTTP_ERROR,
+            "CoinMarketCap returned unexpected HTTP 301",
+            301,
+            1,
+            None,
+        ),
+    ),
+    "redirect-302": (
+        _body(json.dumps(VALID).encode(), 302, {"Location": "https://example.invalid/"}),
+        (
+            ErrorCode.UPSTREAM_HTTP_ERROR,
+            "CoinMarketCap returned unexpected HTTP 302",
+            302,
+            1,
+            None,
+        ),
+    ),
+    "redirect-307": (
+        _body(json.dumps(VALID).encode(), 307, {"Location": "https://example.invalid/"}),
+        (
+            ErrorCode.UPSTREAM_HTTP_ERROR,
+            "CoinMarketCap returned unexpected HTTP 307",
+            307,
+            1,
+            None,
+        ),
+    ),
+    "status-300-body-unread": (
+        # 300 is outside 2xx: the body (here undecodable) must not even be read.
+        _body(b"{}", 300, {"Content-Encoding": "br"}),
+        (
+            ErrorCode.UPSTREAM_HTTP_ERROR,
+            "CoinMarketCap returned unexpected HTTP 300",
+            300,
+            1,
+            None,
+        ),
+    ),
     "unsupported-encoding": (
         _body(b"{}", headers={"Content-Encoding": "br"}),
         (
@@ -532,7 +625,11 @@ async def test_deflate_decodes_one_byte_chunks_and_ignores_trailing_bytes(varian
 
 @pytest.mark.asyncio
 async def test_single_byte_deflate_body_and_empty_encoding_header() -> None:
-    assert await _decode([b"\x03"], "deflate", 100) == []  # Raw deflate of an empty body.
+    # b"\x03\x00" is a complete raw deflate stream of an empty body; b"\x03" alone
+    # is that stream cut short and must not decode as a complete (empty) body.
+    assert await _decode([b"\x03\x00"], "deflate", 100) == []
+    with pytest.raises(zlib.error):
+        await _decode([b"\x03"], "deflate", 100)
     assert b"".join(await _decode([b'{"a":1}'], "", 100)) == b'{"a":1}'
 
 
@@ -620,3 +717,117 @@ async def test_cancelling_the_only_waiter_cancels_the_fetch_cleanly() -> None:
     finally:
         loop.set_exception_handler(None)
     assert errors == []
+
+
+def _raw_deflate(body: bytes) -> bytes:
+    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    return compressor.compress(body) + compressor.flush()
+
+
+TRUNCATED_STREAMS = {
+    "gzip-no-trailer": ("gzip", gzip.compress(json.dumps(VALID).encode())[:-8]),
+    "gzip-partial-trailer": ("gzip", gzip.compress(json.dumps(VALID).encode())[:-3]),
+    "gzip-second-member-cut": (
+        "gzip",
+        gzip.compress(b'{"status":') + gzip.compress(b'{"error_code":0},"data":[]}')[:-8],
+    ),
+    "zlib-no-checksum": ("deflate", zlib.compress(json.dumps(VALID).encode())[:-4]),
+    "raw-deflate-no-final-block": ("deflate", _raw_deflate(json.dumps(VALID).encode())[:-1]),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", sorted(TRUNCATED_STREAMS))
+@pytest.mark.parametrize("chunk_size", [1, 7, 4096])
+async def test_truncated_compressed_streams_are_rejected_across_chunk_boundaries(
+    case: str, chunk_size: int
+) -> None:
+    encoding, raw = TRUNCATED_STREAMS[case]
+    with pytest.raises(zlib.error) as caught:
+        await _decode(chunked(raw, chunk_size), encoding, 10_000)
+    assert str(caught.value) == "compressed response ended before the end of the stream"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chunk_size", [1, 4096])
+async def test_complete_multi_member_gzip_still_decodes(chunk_size: int) -> None:
+    raw = gzip.compress(b'{"status":') + gzip.compress(b'{"error_code":0},"data":[]}')
+    decoded = await _decode(chunked(raw, chunk_size), "gzip", 10_000)
+    assert b"".join(decoded) == b'{"status":{"error_code":0},"data":[]}'
+
+
+REJECTED_THEN_VALID = {
+    "nan": (200, {}, b'{"status":{"error_code":0},"data":{"price":NaN}}'),
+    "overflow": (200, {}, b'{"status":{"error_code":0},"data":{"price":1e400}}'),
+    "truncated-gzip": (
+        200,
+        {"Content-Encoding": "gzip"},
+        gzip.compress(json.dumps(VALID).encode())[:-8],
+    ),
+    "redirect": (302, {"Location": "https://example.invalid/"}, json.dumps(VALID).encode()),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", sorted(REJECTED_THEN_VALID))
+async def test_rejected_responses_are_never_cached(case: str) -> None:
+    status, headers, body = REJECTED_THEN_VALID[case]
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(status, headers=headers, stream=CountingStream([body]))
+        return httpx.Response(200, json=VALID)
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), max_attempts=1, _sleep=no_sleep
+    ) as client:
+        with pytest.raises(CmcClientError):
+            await client.get(ROUTE)
+        assert await client.get(ROUTE) == VALID
+        assert await client.get(ROUTE) == VALID
+    # The rejected first response was not cached; the valid second one was.
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_finite_and_large_integer_numbers_are_preserved() -> None:
+    body = (
+        b'{"status":{"error_code":0},"data":{"price":1.7976931348623157e308,"supply":'
+        + (b"9" * 40)
+        + b"}}"
+    )
+    async with KeylessHttpClient(_transport=httpx.MockTransport(_body(body))) as client:
+        payload = await client.get(ROUTE)
+    assert payload["data"] == {"price": 1.7976931348623157e308, "supply": int("9" * 40)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("number", "reason"),
+    [
+        (b"NaN", "non-standard JSON constant NaN"),
+        (b"Infinity", "non-standard JSON constant Infinity"),
+        (b"-Infinity", "non-standard JSON constant -Infinity"),
+        (b"1e400", "JSON number overflows a finite float"),
+        (b"-1e400", "JSON number overflows a finite float"),
+    ],
+)
+async def test_non_finite_numbers_are_rejected_with_their_reason(
+    number: bytes, reason: str
+) -> None:
+    body = b'{"status":{"error_code":0},"data":{"price":' + number + b"}}"
+    async with KeylessHttpClient(_transport=httpx.MockTransport(_body(body))) as client:
+        with pytest.raises(CmcClientError) as caught:
+            await client.get(ROUTE)
+    assert caught.value.code is ErrorCode.UPSTREAM_CONTRACT_MISMATCH
+    assert str(caught.value.__cause__) == reason
+
+
+@pytest.mark.asyncio
+async def test_status_299_with_a_valid_envelope_still_succeeds() -> None:
+    handler = _body(json.dumps(VALID).encode(), 299)
+    async with KeylessHttpClient(_transport=httpx.MockTransport(handler)) as client:
+        assert await client.get(ROUTE) == VALID

@@ -335,7 +335,7 @@ class KeylessHttpClient:
                         error_detail: str | None = None
                         if 400 <= streamed.status_code < 500 and streamed.status_code != 429:
                             error_detail = await self._read_error_detail(streamed)
-                        elif streamed.status_code < 400:
+                        elif 200 <= streamed.status_code < 300:
                             body = bytearray()
                             declared = streamed.headers.get("Content-Length")
                             if declared is not None and declared.isdecimal():
@@ -411,6 +411,14 @@ class KeylessHttpClient:
                     status_code=response.status_code,
                     attempts=attempt,
                 )
+            if not 200 <= response.status_code < 300:
+                # Redirects are never followed, and only a 2xx can carry a success envelope.
+                raise CmcClientError(
+                    ErrorCode.UPSTREAM_HTTP_ERROR,
+                    f"CoinMarketCap returned unexpected HTTP {response.status_code}",
+                    status_code=response.status_code,
+                    attempts=attempt,
+                )
             result = await self._parse(response.content, response.status_code, attempt)
             if self._cache is not None and ttl > 0:
                 # Cache the validated bytes: immutable, and a hit re-parses
@@ -466,7 +474,12 @@ class KeylessHttpClient:
     @staticmethod
     def _parse_envelope(response: httpx.Response, attempts: int) -> dict[str, Any]:
         try:
-            payload = json.loads(response.content, object_pairs_hook=_unique_object)
+            payload = json.loads(
+                response.content,
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_json_constant,
+                parse_float=_finite_float,
+            )
         except (ValueError, TypeError, RecursionError) as exc:
             raise CmcClientError(
                 ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
@@ -535,6 +548,17 @@ def _json_depth_exceeds(value: Any, maximum: int) -> bool:
     return False
 
 
+def _reject_json_constant(name: str) -> Any:
+    raise ValueError(f"non-standard JSON constant {name}")
+
+
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("JSON number overflows a finite float")
+    return value
+
+
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -598,6 +622,10 @@ async def _bounded_decoded_chunks(response: httpx.Response, maximum: int) -> Asy
     tail = decoder.flush(maximum + 1 - produced)
     if tail:
         yield tail
+    if not decoder.eof:
+        # A stream missing its end (and, for gzip, its CRC/length trailer) is
+        # incomplete even when the decoded prefix happens to be valid JSON.
+        raise zlib.error("compressed response ended before the end of the stream")
 
 
 def _wbits(encoding: str, header: bytes) -> int:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import subprocess
 import sys
 import time
@@ -41,19 +42,19 @@ class LiveProbe:
 
 # Keep this tuple as the single operator matrix. Its order is the default run order.
 LIVE_MATRIX: tuple[LiveProbe, ...] = (
-    LiveProbe("cmc_crypto_map", {"symbol": "BTC"}, "mapping_or_nonempty_list"),
-    LiveProbe("cmc_crypto_info", {"id": 1}, "nonempty_mapping"),
-    LiveProbe("cmc_quotes_latest", {"id": "1,1027", "convert": "USD"}, "nonempty_list"),
+    LiveProbe("cmc_crypto_map", {"symbol": "BTC"}, "asset_list"),
+    LiveProbe("cmc_crypto_info", {"id": 1}, "asset_info_mapping"),
+    LiveProbe("cmc_quotes_latest", {"id": "1,1027", "convert": "USD"}, "quoted_asset_list"),
     LiveProbe(
         "cmc_listings_latest",
         {"start": 1, "limit": 2, "convert": "USD"},
-        "nonempty_list",
+        "quoted_asset_list",
     ),
-    LiveProbe("cmc_global_metrics_latest", {"convert": "USD"}, "nonempty_mapping"),
-    LiveProbe("cmc_fear_greed_latest", {}, "nonempty_mapping"),
-    LiveProbe("cmc_fear_greed_historical", {"start": 1, "limit": 2}, "nonempty_list"),
-    LiveProbe("cmc_altcoin_season_latest", {}, "nonempty_mapping"),
-    LiveProbe("cmc_altcoin_season_historical", {"timeframe": "7d"}, "history_mapping"),
+    LiveProbe("cmc_global_metrics_latest", {"convert": "USD"}, "global_metrics"),
+    LiveProbe("cmc_fear_greed_latest", {}, "fear_greed_latest"),
+    LiveProbe("cmc_fear_greed_historical", {"start": 1, "limit": 2}, "fear_greed_history"),
+    LiveProbe("cmc_altcoin_season_latest", {}, "altcoin_season_latest"),
+    LiveProbe("cmc_altcoin_season_historical", {"timeframe": "7d"}, "altcoin_season_history"),
     LiveProbe("cmc_cmc100_latest", {}, "index_latest"),
     LiveProbe("cmc_cmc100_historical", {"count": 2, "interval": "daily"}, "index_history"),
     LiveProbe("cmc_cmc20_latest", {}, "index_latest"),
@@ -73,30 +74,124 @@ class RouteEvidence:
     evidence: str
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _is_asset(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and isinstance(value.get("id"), int)
+        and not isinstance(value.get("id"), bool)
+    )
+
+
+def _nonempty_list_of(value: Any, check: Callable[[Any], bool]) -> bool:
+    return isinstance(value, list) and bool(value) and all(check(item) for item in value)
+
+
+def _is_info_entry(value: Any) -> bool:
+    # /v2/cryptocurrency/info keys results by id; symbol lookups map to a list.
+    return _is_asset(value) or _nonempty_list_of(value, _is_asset)
+
+
+def _is_fear_greed_point(value: Any) -> bool:
+    return isinstance(value, Mapping) and _is_number(value.get("value"))
+
+
+def _is_index_point(value: Any) -> bool:
+    return isinstance(value, Mapping) and _is_number(value.get("value"))
+
+
+def _index_history_points(data: Any) -> Any:
+    return data.get("values") if isinstance(data, Mapping) else data
+
+
+# Minimum endpoint-specific shapes, taken from CoinMarketCap's published response
+# schemas. They require the identifying or headline market fields of each route,
+# not every documented field, so ordinary provider additions do not fail them.
+_SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
+    "asset_list": (
+        lambda data: _nonempty_list_of(data, _is_asset),
+        lambda data: "asset list with ids; result count=%d" % len(data),
+    ),
+    "asset_info_mapping": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and bool(data)
+            and all(_is_info_entry(item) for item in data.values())
+        ),
+        lambda data: "asset metadata keyed by id; result count=%d" % len(data),
+    ),
+    "quoted_asset_list": (
+        lambda data: _nonempty_list_of(
+            data,
+            lambda item: (
+                _is_asset(item)
+                and isinstance(item.get("quote"), (list, Mapping))
+                and bool(item["quote"])
+            ),
+        ),
+        lambda data: "asset list with ids and quotes; result count=%d" % len(data),
+    ),
+    "global_metrics": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and isinstance(data.get("quote"), Mapping)
+            and bool(data["quote"])
+            and all(
+                isinstance(quote, Mapping) and _is_number(quote.get("total_market_cap"))
+                for quote in data["quote"].values()
+            )
+        ),
+        lambda data: (
+            "global metrics with total_market_cap quotes; quote count=%d" % len(data["quote"])
+        ),
+    ),
+    "fear_greed_latest": (
+        lambda data: (
+            _is_fear_greed_point(data) and isinstance(data.get("value_classification"), str)
+        ),
+        lambda data: "fear and greed value and classification present",
+    ),
+    "fear_greed_history": (
+        lambda data: _nonempty_list_of(data, _is_fear_greed_point),
+        lambda data: "fear and greed history with values; result count=%d" % len(data),
+    ),
+    "altcoin_season_latest": (
+        lambda data: isinstance(data, Mapping) and _is_number(data.get("altcoin_index")),
+        lambda data: "altcoin season index value present",
+    ),
+    "altcoin_season_history": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and _nonempty_list_of(
+                data.get("points"), lambda item: isinstance(item, Mapping) and bool(item)
+            )
+        ),
+        lambda data: "history mapping with points; result count=%d" % len(data["points"]),
+    ),
+    "index_latest": (
+        lambda data: (
+            _is_index_point(data) and _nonempty_list_of(data.get("constituents"), _is_asset)
+        ),
+        lambda data: (
+            "index value with constituents; constituent count=%d" % len(data["constituents"])
+        ),
+    ),
+    "index_history": (
+        lambda data: _nonempty_list_of(_index_history_points(data), _is_index_point),
+        lambda data: (
+            "index history with values; result count=%d" % len(_index_history_points(data))
+        ),
+    ),
+}
+
+
 def _shape_check(data: Any, shape: str) -> str:
-    if shape == "mapping_or_nonempty_list" and (
-        (isinstance(data, Mapping) and bool(data)) or (isinstance(data, list) and bool(data))
-    ):
-        return "response type=%s; minimum shape passed" % type(data).__name__
-    if shape == "nonempty_mapping" and isinstance(data, Mapping) and bool(data):
-        return "response type=mapping; required keys/data present"
-    if shape == "nonempty_list" and isinstance(data, list) and bool(data):
-        return "response type=list; result count=%d" % len(data)
-    if (
-        shape == "history_mapping"
-        and isinstance(data, Mapping)
-        and isinstance(data.get("points"), list)
-        and bool(data["points"])
-    ):
-        return "history mapping with points; result count=%d" % len(data["points"])
-    if shape == "index_latest" and isinstance(data, Mapping) and bool(data):
-        return "response type=mapping; index structure present"
-    if shape == "index_history" and (
-        (isinstance(data, list) and bool(data))
-        or (isinstance(data, Mapping) and bool(data.get("values")))
-    ):
-        count = len(data) if isinstance(data, list) else len(data["values"])
-        return "index history structure present; result count=%d" % count
+    accepts, describe = _SHAPES[shape]
+    if accepts(data):
+        return describe(data)
     raise ValueError("minimum endpoint shape did not pass")
 
 

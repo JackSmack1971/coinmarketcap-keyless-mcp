@@ -140,5 +140,68 @@ async def test_server_identity_and_combined_selector_error_text() -> None:
         result = await client.call_tool("cmc_crypto_map", {"symbols": ["BTC"], "start": 2})
     assert result.is_error
     assert result.content[0].text == (
-        "Error executing tool cmc_crypto_map: symbols cannot be combined with explicit listing_status, start, limit, or sort"
+        "Error executing tool cmc_crypto_map: INVALID_ARGUMENT: symbols cannot be combined "
+        "with explicit listing_status, start, limit, or sort"
     )
+
+
+INVALID_ARGUMENT_CASES = [
+    (
+        "cmc_crypto_map",
+        {"listing_status": ["active", "active"]},
+        "listing_status must not contain duplicate values",
+    ),
+    ("cmc_crypto_map", {"symbols": ["BTC", "BTC"]}, "symbols must not contain duplicate values"),
+    ("cmc_crypto_info", {}, "exactly one of ids, slugs, or symbols must be supplied"),
+    (
+        "cmc_crypto_info",
+        {"ids": [1], "slugs": ["bitcoin"]},
+        "exactly one of ids, slugs, or symbols must be supplied",
+    ),
+    ("cmc_quotes_latest", {}, "exactly one of ids, slugs, or symbols must be supplied"),
+    ("cmc_quotes_latest", {"ids": [1, 1]}, "ids must not contain duplicate values"),
+    ("cmc_quotes_latest", {"slugs": ["a", "a"]}, "slugs must not contain duplicate values"),
+    (
+        "cmc_quotes_latest",
+        {"ids": [1], "convert": ["USD", "USD"]},
+        "convert must not contain duplicate values",
+    ),
+    (
+        "cmc_listings_latest",
+        {"convert": ["USD", "USD"]},
+        "convert must not contain duplicate values",
+    ),
+    (
+        "cmc_global_metrics_latest",
+        {"convert": ["USD", "USD"]},
+        "convert must not contain duplicate values",
+    ),
+    (
+        "cmc_cmc100_historical",
+        {"time_start": "not-a-time"},
+        "time_start must be a Unix timestamp or ISO-8601 timestamp",
+    ),
+    (
+        "cmc_cmc20_historical",
+        {"time_start": "2024-02-01T00:00:00Z", "time_end": "2024-01-01T00:00:00Z"},
+        "time_start must be less than or equal to time_end",
+    ),
+    (
+        "cmc_crypto_map",
+        {"symbols": ["BTC"], "limit": 5},
+        "symbols cannot be combined with explicit listing_status, start, limit, or sort",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tool", "arguments", "message"), INVALID_ARGUMENT_CASES)
+async def test_cross_field_validation_surfaces_invalid_argument_with_message(
+    tool: str, arguments: dict[str, Any], message: str
+) -> None:
+    recording = RecordingClient()
+    async with Client(create_server(recording)) as client:
+        result = await client.call_tool(tool, arguments)
+    assert result.is_error
+    assert result.content[0].text == f"Error executing tool {tool}: INVALID_ARGUMENT: {message}"
+    assert recording.calls == []  # Rejected locally, before any upstream request.

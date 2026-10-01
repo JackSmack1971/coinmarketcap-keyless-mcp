@@ -12,6 +12,7 @@ from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 from coinmarketcap_keyless_mcp.verify_live import (
     LIVE_MATRIX,
     CapabilityClassification,
+    _shape_check,
     classify_error,
     verify_live,
     write_evidence,
@@ -20,6 +21,104 @@ from coinmarketcap_keyless_mcp.verify_live import (
 
 def _envelope(data):
     return {"status": {"error_code": 0}, "data": data}
+
+
+_ASSET = {"id": 1, "name": "Bitcoin", "symbol": "BTC", "slug": "bitcoin"}
+_QUOTED = {**_ASSET, "quote": [{"id": 2781, "symbol": "USD", "price": 63120.95}]}
+_CONSTITUENTS = [{"id": 1, "name": "Bitcoin", "symbol": "BTC", "weight": 0.5}]
+
+# Minimal documented shapes for each route (CoinMarketCap pro-api-reference schemas).
+VALID_DATA = {
+    "cmc_crypto_map": [_ASSET],
+    "cmc_crypto_info": {"1": _ASSET},
+    "cmc_quotes_latest": [_QUOTED, {**_QUOTED, "id": 1027, "symbol": "ETH"}],
+    "cmc_listings_latest": [_QUOTED],
+    "cmc_global_metrics_latest": {
+        "btc_dominance": 57.1,
+        "quote": {"USD": {"total_market_cap": 2.4e12, "total_volume_24h": 9.1e10}},
+    },
+    "cmc_fear_greed_latest": {"value": 40, "value_classification": "Neutral"},
+    "cmc_fear_greed_historical": [
+        {"timestamp": "1726617600", "value": 38, "value_classification": "Fear"}
+    ],
+    "cmc_altcoin_season_latest": {"altcoin_index": 31, "snapshot_time": "2026-10-01"},
+    "cmc_altcoin_season_historical": {"points": [{"altcoin_index": 31, "timestamp": "t"}]},
+    "cmc_cmc100_latest": {"value": 212.4, "constituents": _CONSTITUENTS},
+    "cmc_cmc100_historical": [{"value": 210.1, "update_time": "t", "constituents": []}],
+    "cmc_cmc20_latest": {"value": 160.2, "constituents": _CONSTITUENTS},
+    "cmc_cmc20_historical": {"values": [{"value": 158.3, "update_time": "t"}]},
+}
+
+UNRELATED = {"ok": True}
+# Each entry must fail its route's minimum shape although it is a non-empty container.
+INVALID_DATA = {
+    "cmc_crypto_map": [UNRELATED, [1], "BTC", [{"id": "1"}], [{"id": True}], {"1": _ASSET}],
+    "cmc_crypto_info": [UNRELATED, {"1": UNRELATED}, {"1": []}, {"1": [UNRELATED]}, [_ASSET]],
+    "cmc_quotes_latest": [[UNRELATED], [_ASSET], [{**_ASSET, "quote": []}], ["BTC"], UNRELATED],
+    "cmc_listings_latest": [[UNRELATED], [_ASSET], [{**_ASSET, "quote": "USD"}], [1, 2]],
+    "cmc_global_metrics_latest": [
+        UNRELATED,
+        {"quote": {}},
+        {"quote": {"USD": UNRELATED}},
+        {"quote": {"USD": {"total_market_cap": "2.4e12"}}},
+        {"quote": {"USD": {"total_market_cap": True}}},
+        {"quote": {"USD": {"total_market_cap": float("nan")}}},
+        [UNRELATED],
+    ],
+    "cmc_fear_greed_latest": [
+        UNRELATED,
+        {"value": "40", "value_classification": "Neutral"},
+        {"value": 40},
+        {"value": 40, "value_classification": 1},
+    ],
+    "cmc_fear_greed_historical": [[UNRELATED], [{"value": "38"}], [38], UNRELATED],
+    "cmc_altcoin_season_latest": [UNRELATED, {"altcoin_index": "31"}, {"altcoin_index": None}],
+    "cmc_altcoin_season_historical": [
+        UNRELATED,
+        {"points": []},
+        {"points": [1, 2]},
+        {"points": [{}]},
+        {"points": "x"},
+    ],
+    "cmc_cmc100_latest": [
+        UNRELATED,
+        {"value": 1.0},
+        {"value": 1.0, "constituents": []},
+        {"value": 1.0, "constituents": [UNRELATED]},
+        {"value": "1.0", "constituents": _CONSTITUENTS},
+    ],
+    "cmc_cmc100_historical": [
+        {"values": "x"},
+        {"values": ["1.0"]},
+        [UNRELATED],
+        [1.0],
+        {"values": []},
+        UNRELATED,
+    ],
+    "cmc_cmc20_latest": [UNRELATED, {"constituents": _CONSTITUENTS}],
+    "cmc_cmc20_historical": [[{"value": "1"}], {"values": [UNRELATED]}, UNRELATED],
+}
+
+
+def _probe(tool: str):
+    return next(probe for probe in LIVE_MATRIX if probe.tool == tool)
+
+
+def test_every_route_has_valid_and_invalid_shape_fixtures() -> None:
+    assert set(VALID_DATA) == set(ROUTES) == set(INVALID_DATA)
+
+
+@pytest.mark.parametrize("tool", list(ROUTES))
+def test_documented_minimum_shapes_pass(tool: str) -> None:
+    assert _shape_check(VALID_DATA[tool], _probe(tool).shape)
+
+
+@pytest.mark.parametrize(
+    ("tool", "data"), [(tool, data) for tool, cases in INVALID_DATA.items() for data in cases]
+)
+def test_unrelated_or_mistyped_data_fails_minimum_shape(tool: str, data) -> None:
+    with pytest.raises(ValueError, match="minimum endpoint shape did not pass"):
+        _shape_check(data, _probe(tool).shape)
 
 
 def test_matrix_contains_exactly_thirteen_routes_and_minimal_queries() -> None:
@@ -97,7 +196,7 @@ async def test_supported_shape_and_contract_mismatch_are_distinguished() -> None
     async def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(200, json=_envelope({"ok": True}))
+        return httpx.Response(200, json=_envelope(VALID_DATA["cmc_global_metrics_latest"]))
 
     async with KeylessHttpClient(
         _transport=httpx.MockTransport(handler), cache_enabled=False
