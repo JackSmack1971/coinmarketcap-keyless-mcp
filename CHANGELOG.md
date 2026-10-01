@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Licensed under MIT (`LICENSE`, `license` metadata in `pyproject.toml`).
+- Bounded the response cache to 64 entries, evicting expired entries first and then the least recently used.
+- `symbols` and `convert` items now reject commas and whitespace and are capped at 64 characters, so comma-joined strings can no longer bypass list-size and uniqueness bounds.
+- `verify_live` now exits non-zero when any route is not classified `SUPPORTED`.
+
 ## 1.0.1
 
 - Added CI and static quality gates, with stronger mutation and negative-path coverage.

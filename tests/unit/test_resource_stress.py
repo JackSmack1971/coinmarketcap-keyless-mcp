@@ -432,3 +432,23 @@ async def test_cache_storage_copy_and_exact_expiry_under_lock_contention():
         cache._lock.release()
         assert await asyncio.gather(*tasks) == [None] * 24
     assert cache._entries == {}
+
+
+@pytest.mark.asyncio
+async def test_cache_is_bounded_and_evicts_expired_then_oldest_entries():
+    from coinmarketcap_keyless_mcp.client import _TtlCache
+
+    now = [0.0]
+    cache = _TtlCache(lambda: now[0], max_entries=3)
+    await cache.set("short", {"v": 0}, 1.0)
+    await cache.set("a", {"v": 1}, 30.0)
+    await cache.set("b", {"v": 2}, 30.0)
+    now[0] = 1.0
+    await cache.set("c", {"v": 3}, 30.0)
+    assert list(cache._entries) == ["a", "b", "c"]
+    assert await cache.get("a") == {"v": 1}
+    await cache.set("d", {"v": 4}, 30.0)
+    assert list(cache._entries) == ["c", "a", "d"]
+    for i in range(100):
+        await cache.set(f"k{i}", {"v": i}, 30.0)
+    assert len(cache._entries) == 3

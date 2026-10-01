@@ -16,6 +16,9 @@ class ProviderEnvelope(TypedDict):
     status: dict[str, Any]
     data: Any
 
+# Provider list parameters are comma-joined, so items must not contain separators.
+ListToken = Annotated[str, StringConstraints(pattern=r"^[^,\s]+$", min_length=1, max_length=64)]
+
 Ids = Annotated[
     list[Annotated[int, Field(ge=1)]],
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
@@ -25,11 +28,11 @@ Slugs = Annotated[
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
 ]
 Symbols = Annotated[
-    list[Annotated[str, Field(min_length=1)]],
+    list[ListToken],
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
 ]
 UniqueConversions = Annotated[
-    list[Annotated[str, Field(min_length=1)]],
+    list[ListToken],
     Field(min_length=1, max_length=3, json_schema_extra={"uniqueItems": True}),
 ]
 UniqueIds = Annotated[
@@ -41,7 +44,7 @@ UniqueSlugs = Annotated[
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
 ]
 UniqueSymbols = Annotated[
-    list[Annotated[str, Field(min_length=1)]],
+    list[ListToken],
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
 ]
 

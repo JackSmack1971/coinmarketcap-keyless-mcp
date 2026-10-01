@@ -115,3 +115,7 @@ Tests use fixtures, mocks, local subprocesses, and a localhost HTTP server; they
 This v1 package provides no trading, order placement, wallets, signing, custody, transactions, credentials, API-key configuration, authenticated fallback, DEX surface, generic proxy, investment advice, portfolio construction, or locally derived investment-advice logic. It does not silently transform provider values into locally derived indicators.
 
 The exact contract is encoded in [`src/coinmarketcap_keyless_mcp/contracts.py`](src/coinmarketcap_keyless_mcp/contracts.py), and the product boundary is defined in [`PLAN.md`](PLAN.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

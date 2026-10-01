@@ -123,3 +123,20 @@ async def test_selected_route_rerun_and_evidence_omit_payload(tmp_path: Path) ->
     assert [route["tool"] for route in saved["routes"]] == ["cmc_crypto_info"]
     assert saved["base_url"] == BASE_URL
     assert "price" not in json.dumps(saved)
+
+
+@pytest.mark.parametrize(("classifications", "expected"), [(["SUPPORTED"], 0), (["SUPPORTED", "RATE_LIMITED"], 1)])
+def test_main_exit_code_reflects_classifications(monkeypatch, tmp_path, classifications, expected):
+    from coinmarketcap_keyless_mcp import verify_live as module
+
+    async def fake_verify_live(selected_tools=None):
+        return {"routes": [{"classification": c} for c in classifications]}
+
+    monkeypatch.setattr(module, "verify_live", fake_verify_live)
+    monkeypatch.setattr(module, "write_evidence", lambda report: tmp_path / "e.json")
+    if expected:
+        with pytest.raises(SystemExit) as exc:
+            module.main([])
+        assert exc.value.code == expected
+    else:
+        module.main([])
