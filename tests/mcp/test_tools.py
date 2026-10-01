@@ -128,3 +128,17 @@ async def test_list_items_cannot_smuggle_separators_past_bounds(
         result = await client.call_tool(tool, arguments)
     assert result.is_error
     assert recording.calls == []
+
+
+@pytest.mark.asyncio
+async def test_server_identity_and_combined_selector_error_text() -> None:
+    from importlib.metadata import version
+
+    async with Client(create_server(RecordingClient())) as client:
+        assert client.server_info.name == "coinmarketcap-keyless-mcp"
+        assert client.server_info.version == version("coinmarketcap-keyless-mcp")
+        result = await client.call_tool("cmc_crypto_map", {"symbols": ["BTC"], "start": 2})
+    assert result.is_error
+    assert result.content[0].text == (
+        "Error executing tool cmc_crypto_map: symbols cannot be combined with explicit listing_status, start, limit, or sort"
+    )

@@ -80,8 +80,6 @@ def require_exactly_one_selector(**selectors: list[T] | None) -> tuple[str, list
     if len(present) != 1:
         raise ValueError("exactly one of ids, slugs, or symbols must be supplied")
     name, values = present[0]
-    if not values:
-        raise ValueError(f"{name} must not be empty")
     if len(set(values)) != len(values):
         raise ValueError(f"{name} must not contain duplicate values")
     return name, values

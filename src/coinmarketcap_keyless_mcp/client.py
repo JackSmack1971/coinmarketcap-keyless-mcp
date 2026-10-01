@@ -240,7 +240,6 @@ class KeylessHttpClient:
         self._backoff_max_seconds = backoff_max_seconds
         self._sleep = _sleep
         self._random_uniform = _random_uniform
-        self._cache_enabled = cache_enabled
         self._cache_ttls = {**CACHE_TTLS_BY_ROUTE, **ttl_overrides}
         self._cache = _TtlCache(_monotonic) if cache_enabled else None
         self._concurrency = asyncio.Semaphore(max_concurrency)
