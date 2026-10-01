@@ -4,7 +4,7 @@
 
 This repository implements `coinmarketcap-keyless-mcp`, a bounded, read-only, credential-free Model Context Protocol server for selected CoinMarketCap Keyless Public API routes.
 
-This file governs how coding agents operate in this repository. It is intentionally compact. Do not duplicate the full product specification here.
+This file is the persistent execution map for Codex. Keep detailed product and Git doctrine in their dedicated files rather than duplicating them here.
 
 For product scope, route contracts, tool schemas, error semantics, phases, acceptance criteria, and release gates, use `PLAN.md`.
 
@@ -14,16 +14,23 @@ Follow instructions in this order:
 
 1. The active user request.
 2. This `AGENTS.md` for repository execution rules.
-3. `PLAN.md` for product scope and implementation contract.
-4. Applicable repository tests and configuration.
-5. Current official upstream documentation when external behavior must be verified.
-6. Existing repository conventions.
+3. `PLAN.md` for product scope, contracts, phases, acceptance criteria, and release gates.
+4. `VERSION_CONTROL.md` for Git/worktree/staging/commit/integration/push/tag/release doctrine.
+5. Applicable tests and repository configuration.
+6. Current official upstream documentation when external behavior must be verified.
+7. Existing repository conventions.
 
 If instructions conflict, do not silently reconcile a material product, compatibility, security, or public-contract conflict. Preserve the narrower safe behavior and report the conflict.
 
-## Read only what the task needs
+## Read contextually
 
 Do not automatically read the entire repository or all of `PLAN.md` for every change.
+
+Consult `PLAN.md` when changing product scope, MCP tools/schemas/routes/outputs/errors, retries, caching, transports, live capability, security/configuration, phases, or release gates.
+
+Consult `VERSION_CONTROL.md` whenever Git/worktree state or a version-control side effect is relevant.
+
+For OpenAI, Codex, or MCP SDK behavior, verify current official documentation when the answer may have changed.
 
 Use the relevant `PLAN.md` sections for the task at hand:
 
@@ -46,12 +53,11 @@ Implement only the active user-requested slice or active PLAN phase.
 
 Do not opportunistically:
 
-- add routes or MCP tools outside the approved v1 surface;
+- add tools or routes outside the approved v1 surface;
 - add DEX support;
 - add authenticated CoinMarketCap support;
 - add API-key, bearer-token, cookie, wallet, signing, or credential abstractions;
-- add a generic URL/path/query proxy;
-- add arbitrary upstream hosts, methods, headers, or routes;
+- add arbitrary hosts, methods, headers, routes, or a generic URL/path/query proxy;
 - add investment advice, portfolio logic, or derived market indicators;
 - widen schemas because an undocumented provider parameter appears to work;
 - refactor unrelated code;
@@ -147,7 +153,7 @@ Avoid:
 For MCP-facing work:
 
 - use the current official MCP Python SDK v2 behavior required by `PLAN.md`;
-- preserve identical intended tool surfaces across stdio and Streamable HTTP;
+- preserve the same intended tool surface across in-process, stdio, and Streamable HTTP;
 - keep stdout reserved for the stdio protocol;
 - send diagnostics through stderr or configured logging;
 - reject unknown tool arguments;
@@ -277,13 +283,7 @@ A dependency change is not a reason to modify unrelated lock or environment stat
 
 ## Git and external side effects
 
-Do not create commits, tags, branches, pull requests, releases, issues, comments, or published packages unless explicitly requested.
-
-Do not push changes unless explicitly requested.
-
-Avoid destructive Git operations. Never discard user changes.
-
-Do not use `git reset --hard`, destructive checkout/revert patterns, aggressive clean commands, force pushes, or equivalent destructive operations to solve local problems.
+`VERSION_CONTROL.md` is normative for Git behavior. Without explicit authorization, edit, test, and review only; do not stage, commit, branch, merge, tag, push, open PRs, or release. Never discard user changes or use destructive Git operations as a shortcut.
 
 ## Completion standard
 
@@ -311,4 +311,4 @@ Report only:
 3. verification commands actually run and their outcomes;
 4. blockers, unresolved decisions, or unverified behavior.
 
-Be precise. Do not claim release readiness, live support, or acceptance gates beyond the evidence actually obtained.
+When Git state is material, also report the relevant repository state required by `VERSION_CONTROL.md`. Do not claim release readiness, live support, clean repository state, commit state, or acceptance gates beyond verified evidence.
