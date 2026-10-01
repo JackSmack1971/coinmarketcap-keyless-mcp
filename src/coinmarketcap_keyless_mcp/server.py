@@ -123,7 +123,7 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         sort_dir: SortDirection = "desc",
     ) -> ProviderEnvelope:
         require_unique(convert, "convert")
-        return await upstream.get(
+        return await get(
             ROUTES["cmc_listings_latest"],
             {"start": start, "limit": limit, "convert": ",".join(convert), "sort": sort, "sort_dir": sort_dir},
         )
