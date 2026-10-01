@@ -174,6 +174,8 @@ class KeylessHttpClient:
         self._cache = _TtlCache(_monotonic) if cache_enabled else None
         self._concurrency = asyncio.Semaphore(max_concurrency)
         self._max_response_bytes = max_response_bytes
+        self._last_attempts = 0
+        self._last_status_code: int | None = None
         self._http = httpx.AsyncClient(
             base_url=BASE_URL,
             headers={"Accept": "application/json"},
@@ -207,6 +209,7 @@ class KeylessHttpClient:
             logger.debug("cache miss route=%s", route)
 
         for attempt in range(1, self._max_attempts + 1):
+            self._last_attempts = attempt
             try:
                 async with self._concurrency:
                     response = await self._http.get(route, params=query)
@@ -232,6 +235,7 @@ class KeylessHttpClient:
             if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._max_attempts:
                 await self._retry_delay(response, attempt)
                 continue
+            self._last_status_code = response.status_code
             if response.status_code == 429:
                 raise CmcClientError(
                     ErrorCode.RATE_LIMITED,

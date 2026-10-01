@@ -46,7 +46,7 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     """Create the high-level MCP server with the exact 13-tool contract."""
 
     upstream = client if client is not None else KeylessHttpClient()
-    server = MCPServer("coinmarketcap-keyless-mcp", version="0.1.0")
+    server = MCPServer("coinmarketcap-keyless-mcp", version="1.0.0")
 
     async def get(route: str, params: dict[str, Any] | None = None) -> ProviderEnvelope:
         """Call the injected Phase 1 boundary without hiding its stable error code."""
