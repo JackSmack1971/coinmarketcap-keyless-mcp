@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version
 from typing import Any
 
 from mcp.server import MCPServer
@@ -44,7 +45,7 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     """Create the high-level MCP server with the exact 13-tool contract."""
 
     upstream = client if client is not None else KeylessHttpClient()
-    server = MCPServer("coinmarketcap-keyless-mcp", version="1.0.0")
+    server = MCPServer("coinmarketcap-keyless-mcp", version=version("coinmarketcap-keyless-mcp"))
 
     async def get(route: str, params: dict[str, Any] | None = None) -> ProviderEnvelope:
         """Call the injected Phase 1 boundary without hiding its stable error code."""
@@ -65,8 +66,6 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         symbols: UniqueSymbols = Field(default_factory=list),
     ) -> ProviderEnvelope:
         if symbols:
-            if not symbols:
-                raise ValueError("symbols must not be empty")
             require_unique(symbols, "symbols")
             if listing_status != ["active"] or start != 1 or limit != 100 or sort != "id":
                 raise ValueError(
@@ -74,8 +73,6 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
                 )
             return await get(ROUTES["cmc_crypto_map"], {"symbol": ",".join(symbols)})
         require_unique(listing_status, "listing_status")
-        if not listing_status:
-            raise ValueError("listing_status must not be empty")
         if any(value not in {"active", "inactive", "untracked"} for value in listing_status):
             raise ValueError("listing_status contains an unsupported value")
         return await get(
@@ -231,6 +228,3 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     map_tool.fn = map_with_presence
 
     return server
-
-
-mcp = create_server()
