@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from math import isfinite
-from typing import Annotated, Any, Literal, TypeVar, TypedDict
+from typing import Annotated, Any, Literal, TypedDict, TypeVar
 
 from pydantic import Field, StringConstraints
 

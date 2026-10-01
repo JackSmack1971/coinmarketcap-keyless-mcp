@@ -12,7 +12,6 @@ from mcp.client.streamable_http import streamable_http_client
 from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 from coinmarketcap_keyless_mcp.runtime import run_server
 
-
 NAMES = [contract.name for contract in TOOL_CONTRACTS]
 ENVELOPE = {"status": {"error_code": 0, "notice": None}, "data": {"fixture": True}}
 
@@ -41,6 +40,7 @@ async def _wait_for_server(url: str) -> None:
     raise AssertionError("Streamable HTTP server did not become ready")
 
 
+@pytest.mark.streamable_http
 @pytest.mark.asyncio
 async def test_streamable_http_discovers_calls_and_releases_port() -> None:
     port = _free_port()

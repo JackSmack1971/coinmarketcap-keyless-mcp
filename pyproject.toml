@@ -20,6 +20,7 @@ coinmarketcap-keyless-mcp = "coinmarketcap_keyless_mcp.runtime:main"
 dev = [
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.24,<1",
+  "ruff>=0.15,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -28,6 +29,11 @@ packages = ["src/coinmarketcap_keyless_mcp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["streamable_http: tests that start the local Streamable HTTP transport"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

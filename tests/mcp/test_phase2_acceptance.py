@@ -9,7 +9,6 @@ from coinmarketcap_keyless_mcp.contracts import ROUTES, TOOL_CONTRACTS
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 from coinmarketcap_keyless_mcp.server import create_server
 
-
 NAMES = [contract.name for contract in TOOL_CONTRACTS]
 NESTED_ENVELOPE = {
     "status": {"error_code": 0, "notice": None, "meta": {"request_id": "fixture"}},

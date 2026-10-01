@@ -7,7 +7,6 @@ from coinmarketcap_keyless_mcp.client import KeylessHttpClient
 from coinmarketcap_keyless_mcp.contracts import ROUTES
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 
-
 FAMILY_FIXTURES = {
     "identity_info": {
         "status": {"error_code": 0, "timestamp": "2026-01-01T00:00:00Z"},

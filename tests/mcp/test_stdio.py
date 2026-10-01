@@ -9,7 +9,6 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 
-
 NAMES = [contract.name for contract in TOOL_CONTRACTS]
 ENVELOPE = {"status": {"error_code": 0, "notice": None}, "data": {"fixture": True}}
 
