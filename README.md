@@ -13,7 +13,7 @@ uv run pytest
 
 The adapter is designed to run without account setup or provider credentials. It will use only the fixed public API base URL and GET routes defined by the contract.
 
-The Phase 1 client retries only bounded transient failures (429 and 502/503/504, plus selected network/timeouts). Exhausted 429 responses are classified as `RATE_LIMITED`; malformed successful envelopes are classified as `UPSTREAM_CONTRACT_MISMATCH`.
+The client retries only bounded transient failures (429 and 502/503/504, plus selected network/timeouts). It uses a process-local TTL cache and a default limit of two concurrent upstream requests; caching can be disabled through the client configuration. Exhausted 429 responses are classified as `RATE_LIMITED`; malformed successful envelopes are classified as `UPSTREAM_CONTRACT_MISMATCH`.
 
 ## Phase 0 contract
 
