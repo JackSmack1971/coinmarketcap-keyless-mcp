@@ -1,0 +1,68 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "env": {
+    "UV_PYTHON": "3.11"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv lock --check)",
+      "Bash(uv build:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch --show-current)",
+      "Bash(git worktree list)"
+    ],
+    "ask": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(uv run python -m coinmarketcap_keyless_mcp.verify_live:*)",
+      "Bash(uv run mutmut:*)",
+      "Bash(gh workflow run:*)",
+      "Edit(./verification/**)"
+    ],
+    "deny": [
+      "Read(./uv.lock)",
+      "Edit(./uv.lock)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./mutants/**)",
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git tag:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv sync --locked --all-groups"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python .claude/hooks/ruff_format.py"
+          }
+        ]
+      }
+    ]
+  }
+}
