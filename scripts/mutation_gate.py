@@ -1,8 +1,8 @@
 """Fail when the mutmut score drops below a ratchet threshold.
 
-Run after ``mutmut run``: ``uv run python scripts/mutation_gate.py --min-score 68``.
+Run after ``mutmut run``: ``uv run python scripts/mutation_gate.py --min-score 92``.
 The score is (killed + timeout) / all mutants. Survivors are reviewed by hand
-(see verification/hardening-h2-mutation.md); this gate only catches regressions.
+(see verification/mutation-survivors.md); this gate only catches regressions.
 """
 
 from __future__ import annotations

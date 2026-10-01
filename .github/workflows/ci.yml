@@ -125,4 +125,4 @@ jobs:
 
       - name: Enforce minimum mutation score
         # Ratchet: raise this as survivors are killed; never lower it to pass.
-        run: uv run python scripts/mutation_gate.py --min-score 68
+        run: uv run python scripts/mutation_gate.py --min-score 92
