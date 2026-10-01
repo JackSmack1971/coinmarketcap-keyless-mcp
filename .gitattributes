@@ -1,0 +1,2 @@
+# Normalize all text files to LF in the repository and on checkout (including Windows).
+* text=auto eol=lf
