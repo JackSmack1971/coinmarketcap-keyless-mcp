@@ -58,6 +58,7 @@ only_mutate = [
 ]
 pytest_add_cli_args_test_selection = [
   "tests/unit/test_client.py",
+  "tests/unit/test_client_contract.py",
   "tests/unit/test_models.py",
   "tests/unit/test_resource_stress.py",
   "tests/security/test_h5.py",
