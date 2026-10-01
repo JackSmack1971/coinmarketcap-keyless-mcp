@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Literal
@@ -13,18 +14,39 @@ from .server import create_server
 
 Transport = Literal["stdio", "streamable-http"]
 ClientFactory = Callable[[], KeylessHttpClient]
+CLEANUP_TIMEOUT_SECONDS = 10.0
+
+logger = logging.getLogger(__name__)
 
 
-async def _complete_cleanup(awaitable: Awaitable[object]) -> None:
-    """Finish owned cleanup even if the caller is cancelled again."""
+async def _complete_cleanup(
+    awaitable: Awaitable[object], timeout: float = CLEANUP_TIMEOUT_SECONDS
+) -> None:
+    """Finish owned cleanup despite repeated cancellation, but never wait forever."""
 
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     cleanup = asyncio.ensure_future(awaitable)
     while not cleanup.done():
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            cleanup.cancel()
+            logger.warning("cleanup did not finish within %.1f seconds; abandoning it", timeout)
+            return
         try:
-            await asyncio.shield(cleanup)
+            await asyncio.wait({cleanup}, timeout=remaining)
         except asyncio.CancelledError:
             continue
     cleanup.result()
+
+
+def _is_loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _port(value: str) -> int:
@@ -66,6 +88,12 @@ async def _run_streamable_http(server: object, *, host: str, port: int) -> None:
 
     import uvicorn
 
+    if not _is_loopback(host):
+        logger.warning(
+            "Streamable HTTP is bound to non-loopback host %s with no authentication; "
+            "anyone who can reach it can spend this IP's keyless CoinMarketCap rate limit",
+            host,
+        )
     app = server.streamable_http_app(host=host)  # type: ignore[attr-defined]
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     http_server = uvicorn.Server(config)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import gzip
 import json
@@ -115,8 +116,9 @@ async def test_malformed_success_bodies_remain_contract_mismatches(body: bytes) 
 
 
 @pytest.mark.asyncio
-async def test_deep_json_is_contract_mismatch_then_valid_response_can_cache() -> None:
-    deep = b'{"status":{"error_code":0},"data":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}"
+@pytest.mark.parametrize("depth", [300, 2000])
+async def test_deep_json_is_contract_mismatch_then_valid_response_can_cache(depth: int) -> None:
+    deep = b'{"status":{"error_code":0},"data":' + b"[" * depth + b"0" + b"]" * depth + b"}"
     calls = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -230,7 +232,7 @@ async def test_extreme_decimal_content_length_rejected_without_integer_conversio
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("retry_after", ["999999999999999999999999", "-1", "NaN", "Infinity", "bad"])
+@pytest.mark.parametrize("retry_after", ["-1", "NaN", "Infinity", "bad"])
 async def test_retry_after_abuse_is_capped_and_exhaustion_is_stable(retry_after: str) -> None:
     attempts = 0
     delays = []
@@ -244,13 +246,38 @@ async def test_retry_after_abuse_is_capped_and_exhaustion_is_stable(retry_after:
         delays.append(delay)
 
     async with KeylessHttpClient(
-        _transport=httpx.MockTransport(handler), _sleep=record, _random_uniform=lambda low, high: high
+        _transport=httpx.MockTransport(handler),
+        _sleep=record,
+        _random_uniform=lambda low, high: high,
     ) as client:
         with pytest.raises(CmcClientError) as caught:
             await client.get(ROUTE)
     assert caught.value.code is ErrorCode.RATE_LIMITED
     assert attempts == 3
     assert delays == [0.25, 0.5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry_after", ["999999999999999999999999", "2.001"])
+async def test_retry_after_above_cap_fails_fast_instead_of_retrying_early(retry_after: str) -> None:
+    attempts = 0
+    delays = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(429, headers={"Retry-After": retry_after})
+
+    async def record(delay: float) -> None:
+        delays.append(delay)
+
+    async with KeylessHttpClient(_transport=httpx.MockTransport(handler), _sleep=record) as client:
+        with pytest.raises(CmcClientError) as caught:
+            await client.get(ROUTE)
+    assert caught.value.code is ErrorCode.RATE_LIMITED
+    assert caught.value.attempts == 1
+    assert attempts == 1
+    assert delays == []
 
 
 @pytest.mark.asyncio
@@ -344,16 +371,29 @@ def test_cli_transport_and_port_validation() -> None:
     parser = build_parser()
     assert parser.parse_args([]).transport == "stdio"
     assert parser.parse_args([]).host == "127.0.0.1"
-    assert parser.parse_args(["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "65535"]).host == "0.0.0.0"
-    for args in (["--transport", "unknown"], ["--port", "x"], ["--port", "0"], ["--port", "65536"], ["--extra"]):
+    assert (
+        parser.parse_args(
+            ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "65535"]
+        ).host
+        == "0.0.0.0"
+    )
+    for args in (
+        ["--transport", "unknown"],
+        ["--port", "x"],
+        ["--port", "0"],
+        ["--port", "65536"],
+        ["--extra"],
+    ):
         with pytest.raises(SystemExit) as caught:
             parser.parse_args(args)
         assert caught.value.code == 2
 
 
 @pytest.mark.asyncio
-async def test_stdio_startup_discovery_call_failure_and_shutdown_keep_stdout_protocol_only() -> None:
-    code = '''import asyncio
+async def test_stdio_startup_discovery_call_failure_and_shutdown_keep_stdout_protocol_only() -> (
+    None
+):
+    code = """import asyncio
 from coinmarketcap_keyless_mcp import runtime
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 class Fixture:
@@ -362,7 +402,7 @@ class Fixture:
  async def aclose(self):
   print("cleanup diagnostic", file=__import__("sys").stderr)
 asyncio.run(runtime.run_server("stdio", client_factory=Fixture))
-'''
+"""
     params = StdioServerParameters(command=sys.executable, args=["-c", code])
     async with asyncio.timeout(10):
         async with Client(stdio_client(params)) as client:
@@ -445,8 +485,50 @@ def test_application_source_has_no_stdout_print_calls() -> None:
 
     source = Path(__file__).parents[2] / "src" / "coinmarketcap_keyless_mcp"
     runtime_sources = [path for path in source.glob("*.py") if path.name != "verify_live.py"]
-    assert all("print(" not in path.read_text(encoding="utf-8") for path in runtime_sources)
+    calls = [
+        f"{path.name}:{node.lineno}"
+        for path in runtime_sources
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
+    ]
+    assert calls == []
 
 
 async def _immediate() -> None:
     return None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_that_never_finishes_is_abandoned_after_its_timeout(caplog) -> None:
+    from coinmarketcap_keyless_mcp import runtime
+
+    cancelled = asyncio.Event()
+
+    async def hang() -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    async with asyncio.timeout(5):
+        await runtime._complete_cleanup(hang(), timeout=0.05)
+        await cancelled.wait()
+    assert "abandoning" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("host", "loopback"),
+    [
+        ("127.0.0.1", True),
+        ("::1", True),
+        ("localhost", True),
+        ("0.0.0.0", False),
+        ("example.com", False),
+    ],
+)
+def test_non_loopback_http_binding_is_detected(host: str, loopback: bool) -> None:
+    from coinmarketcap_keyless_mcp import runtime
+
+    assert runtime._is_loopback(host) is loopback

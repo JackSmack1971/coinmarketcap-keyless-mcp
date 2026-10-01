@@ -33,7 +33,7 @@ uv sync
 uv run pytest -q
 ```
 
-The package reports version `1.0.0`. Runtime dependencies are `mcp` and `httpx`; test dependencies are provided by the `dev` dependency group.
+The package reports the version declared in `pyproject.toml`. Runtime dependencies are `mcp`, `httpx`, and `uvicorn` (for Streamable HTTP); test dependencies are provided by the `dev` dependency group.
 
 ## Transports
 
@@ -59,15 +59,15 @@ The secondary Streamable HTTP transport is intended for local use. It binds to `
 uv run coinmarketcap-keyless-mcp --transport streamable-http
 ```
 
-Use `--host` and `--port` to choose the local bind address and port, for example `--host 127.0.0.1 --port 8001`. This is not an internet-facing hosted service. Both transports expose the same 13 tools and schemas.
+Use `--host` and `--port` to choose the local bind address and port, for example `--host 127.0.0.1 --port 8001`. This is not an internet-facing hosted service: the HTTP transport has no authentication, so anyone who can reach it can spend this machine's keyless CoinMarketCap rate limit. Binding to a non-loopback host such as `0.0.0.0` logs a warning to stderr. Both transports expose the same 13 tools and schemas.
 
 ## Behavior and errors
 
-The server preserves the provider's `status` and `data` envelope rather than inventing derived market indicators. A successful HTTP 2xx response must also have a valid CMC envelope with normalized `status.error_code == 0`.
+The server preserves the provider's `status` and `data` envelope rather than inventing derived market indicators. Provider text fields (for example project descriptions) are passed through verbatim, so treat them as untrusted input to the model. A successful HTTP 2xx response must also have a valid CMC envelope with normalized `status.error_code == 0`.
 
 Validation failures are `INVALID_ARGUMENT`. Exhausted HTTP 429 retries are `RATE_LIMITED`, never `UNSUPPORTED_ROUTE`. Timeout, network, and retryable 5xx failures retain transient upstream classifications; malformed successful responses are `UPSTREAM_CONTRACT_MISMATCH`; provider application errors are `UPSTREAM_APPLICATION_ERROR`. Unsupported capability is recorded only with positive evidence.
 
-Retries are bounded and apply to 429, 502/503/504, and selected network/timeouts. Valid bounded `Retry-After` values are honored; otherwise capped exponential backoff with jitter is used. Deterministic non-429 4xx responses are not retried. The client uses a process-local TTL cache for successful responses only, with route-specific short TTLs for volatile data and a default maximum of two concurrent upstream requests. Caching is an optimization, not a correctness dependency.
+Retries are bounded and apply to 429, 502/503/504, and selected network/timeouts. Valid `Retry-After` values within the backoff cap are honored; a longer `Retry-After` ends retrying immediately with the final classification (for example `RATE_LIMITED`) instead of retrying early; otherwise capped exponential backoff with jitter is used. Each attempt also has a 30-second wall-clock deadline. Deterministic non-429 4xx responses are not retried. Non-retryable 4xx errors include the provider's error message when the body carries one (read up to 4 KiB, sanitized). The client uses a bounded (64-entry) process-local TTL cache for successful responses only, coalesces identical concurrent cold requests into one upstream fetch, with route-specific short TTLs for volatile data and a default maximum of two concurrent upstream requests. Caching is an optimization, not a correctness dependency.
 
 ## Live keyless capability verification
 
@@ -90,6 +90,8 @@ Classifications are:
 - `TRANSIENT_ERROR`: a timeout, network, or retryable upstream failure prevented a conclusion;
 - `CONTRACT_MISMATCH`: the response envelope or minimum route shape was not valid;
 - `UNSUPPORTED`: positive provider evidence indicates the keyless capability is unavailable.
+
+The command exits `0` only when every probed route is `SUPPORTED`, `1` otherwise, and `2` if the run or evidence write fails.
 
 The accepted Phase 5 evidence is in `verification/live-capability-20261001T015531675887Z.json`, with the selected historical-route rerun in `verification/live-capability-20261001T015419204714Z.json`. Together they record all 13 released routes as `SUPPORTED`, the exact fixed base URL, timestamps, HTTP 200 responses, and the pre-release package version `0.1.0`; reports intentionally retain no full provider payloads. The status is `LIVE_KEYLESS_CORE_VERIFIED`. CoinMarketCap can change keyless coverage or rate-limit behavior, so rerun the full command or a selected route after provider changes and before a later release qualification. Do not infer unsupported capability from one 429 or transient failure.
 

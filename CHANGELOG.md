@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Non-retryable 4xx errors now include the provider's error message when the body carries one (read up to 4 KiB and sanitized).
+- A `Retry-After` longer than the backoff cap now stops retrying immediately with the final classification, instead of retrying early.
+- Each upstream attempt has a 30-second wall-clock deadline, so a slow-drip body cannot hold capacity indefinitely.
+- Identical concurrent cold requests share one upstream fetch. The cache stores validated response bytes, and payloads over 64 KiB are parsed off the event loop.
+- `deflate` responses without a zlib header, and multi-member `gzip` responses, now decode correctly.
+- Shutdown cleanup gives up after 10 seconds instead of waiting forever.
+- Binding Streamable HTTP to a non-loopback host logs a warning.
+- `mcp` is pinned to `>=2.2,<2.3` because the server relies on private SDK internals; `uvicorn` now has an upper bound.
+- The sdist now includes `LICENSE`.
+
+## Unreleased
+
 - Licensed under MIT (`LICENSE`, `license` metadata in `pyproject.toml`).
 - Bounded the response cache to 64 entries, evicting expired entries first and then the least recently used.
 - `symbols` and `convert` items now reject commas and whitespace and are capped at 64 characters, so comma-joined strings can no longer bypass list-size and uniqueness bounds.

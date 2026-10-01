@@ -14,7 +14,7 @@ ENVELOPE = {"status": {"error_code": 0, "notice": None}, "data": {"fixture": Tru
 
 
 def _subprocess_code(error: bool = False) -> str:
-    return f'''import asyncio
+    return f"""import asyncio
 from coinmarketcap_keyless_mcp import runtime
 
 class FixtureClient:
@@ -25,7 +25,7 @@ class FixtureClient:
         return {ENVELOPE!r}
 
 asyncio.run(runtime.run_server("stdio", client_factory=FixtureClient))
-'''
+"""
 
 
 async def _discover_and_call(error: bool = False) -> tuple[list[str], Any]:
@@ -68,8 +68,11 @@ async def test_stdio_idle_disconnect_exits_and_closes_client() -> None:
         "    async def aclose(self):\n        import sys\n        print('CLIENT_CLOSED', file=sys.stderr)\n\n    async def get(self, route, params=None):",
     )
     process = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", code,
-        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        sys.executable,
+        "-c",
+        code,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     async with asyncio.timeout(10):

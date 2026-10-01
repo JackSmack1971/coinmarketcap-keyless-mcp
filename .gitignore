@@ -9,3 +9,8 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+mutants/
+.ruff_cache/
+.mypy_cache/
+.env
+.env.*
