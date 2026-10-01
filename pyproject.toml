@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "coinmarketcap-keyless-mcp"
-version = "1.0.1"
+version = "1.0.2"
 description = "Bounded, read-only MCP contracts for selected CoinMarketCap public routes."
 readme = "README.md"
 license = "MIT"
