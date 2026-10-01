@@ -75,3 +75,43 @@ async def _wait_for_port_release(port: int) -> None:
                 pass
         await asyncio.sleep(0.05)
     raise AssertionError("Streamable HTTP port was not released")
+
+
+@pytest.mark.streamable_http
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call", [False, True])
+async def test_http_shutdown_closes_owned_client_in_idle_session(call: bool) -> None:
+    closed = asyncio.Event()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class OwnedClient(FixtureClient):
+        async def get(self, route, params=None):
+            entered.set()
+            await release.wait()
+            return ENVELOPE
+
+        async def aclose(self):
+            closed.set()
+
+    port = _free_port()
+    task = asyncio.create_task(run_server("streamable-http", port=port, client_factory=OwnedClient))
+    url = f"http://127.0.0.1:{port}/mcp"
+    try:
+        async with asyncio.timeout(10):
+            await _wait_for_server(url)
+            async with Client(streamable_http_client(url)) as client:
+                if call:
+                    request = asyncio.create_task(client.call_tool("cmc_fear_greed_latest", {}))
+                    await entered.wait()
+                    release.set()
+                    assert not (await request).is_error
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert closed.is_set()
+            await _wait_for_port_release(port)
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

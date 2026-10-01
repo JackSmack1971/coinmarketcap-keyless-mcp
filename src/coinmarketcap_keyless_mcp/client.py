@@ -212,7 +212,24 @@ class KeylessHttpClient:
             self._last_attempts = attempt
             try:
                 async with self._concurrency:
-                    response = await self._http.get(route, params=query)
+                    async with self._http.stream("GET", route, params=query) as streamed:
+                        # HTTP errors are classified from headers alone. Do not
+                        # consume an error body or hold capacity during backoff.
+                        response = streamed
+                        if streamed.status_code < 400:
+                            body = bytearray()
+                            declared = streamed.headers.get("Content-Length")
+                            if declared is not None and declared.isdecimal():
+                                if int(declared) > self._max_response_bytes:
+                                    self._raise_oversized(streamed, attempt)
+                            async for chunk in streamed.aiter_bytes():
+                                remaining = self._max_response_bytes + 1 - len(body)
+                                body.extend(chunk[:remaining])
+                                if len(body) > self._max_response_bytes:
+                                    self._raise_oversized(streamed, attempt)
+                            response = httpx.Response(
+                                streamed.status_code, content=bytes(body), request=streamed.request
+                            )
             except httpx.TimeoutException as exc:
                 if attempt < self._max_attempts:
                     await self._backoff(attempt)
@@ -257,19 +274,21 @@ class KeylessHttpClient:
                     status_code=response.status_code,
                     attempts=attempt,
                 )
-            if len(response.content) > self._max_response_bytes:
-                raise CmcClientError(
-                    ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
-                    "CoinMarketCap response exceeds the configured size limit",
-                    status_code=response.status_code,
-                    attempts=attempt,
-                )
             result = self._parse_envelope(response, attempt)
             if self._cache is not None and ttl > 0:
                 await self._cache.set(key, result, ttl)
             return copy.deepcopy(result)
 
         raise AssertionError("retry loop exhausted without a result")
+
+    @staticmethod
+    def _raise_oversized(response: httpx.Response, attempt: int) -> None:
+        raise CmcClientError(
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response exceeds the configured size limit",
+            status_code=response.status_code,
+            attempts=attempt,
+        )
 
     async def _retry_delay(self, response: httpx.Response, attempt: int) -> None:
         retry_after = _retry_after_seconds(
