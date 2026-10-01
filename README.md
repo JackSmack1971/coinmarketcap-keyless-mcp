@@ -1,6 +1,6 @@
 # coinmarketcap-keyless-mcp
 
-`coinmarketcap-keyless-mcp` is a bounded, read-only MCP adapter for the selected CoinMarketCap public routes defined in [`PLAN.md`](PLAN.md). Phase 0 locks the v1 route and tool contract; Phase 1 provides the internal fixed-host HTTP client and stable upstream error model. MCP tools and transports remain later-phase work.
+`coinmarketcap-keyless-mcp` is a bounded, read-only MCP adapter for the selected CoinMarketCap public routes defined in [`PLAN.md`](PLAN.md). Phase 0 locks the v1 route and tool contract; Phase 1 provides the internal fixed-host HTTP client and stable upstream error model; Phase 2 exposes the initial 13 MCP tools. Transports remain later-phase work.
 
 ## Development
 
