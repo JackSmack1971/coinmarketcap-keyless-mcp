@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Dev dependencies: bumped `pytest` to `>=9.0.3,<10` (fixes PYSEC-2026-1845) and `pytest-asyncio` to `>=1.3,<2`, which pytest 9 requires.
 - Non-retryable 4xx errors now include the provider's error message when the body carries one (read up to 4 KiB and sanitized).
 - A `Retry-After` longer than the backoff cap now stops retrying immediately with the final classification, instead of retrying early.
 - Each upstream attempt has a 30-second wall-clock deadline, so a slow-drip body cannot hold capacity indefinitely.
