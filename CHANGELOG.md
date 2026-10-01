@@ -12,9 +12,6 @@
 - Binding Streamable HTTP to a non-loopback host logs a warning.
 - `mcp` is pinned to `>=2.2,<2.3` because the server relies on private SDK internals; `uvicorn` now has an upper bound.
 - The sdist now includes `LICENSE`.
-
-## Unreleased
-
 - Licensed under MIT (`LICENSE`, `license` metadata in `pyproject.toml`).
 - Bounded the response cache to 64 entries, evicting expired entries first and then the least recently used.
 - `symbols` and `convert` items now reject commas and whitespace and are capped at 64 characters, so comma-joined strings can no longer bypass list-size and uniqueness bounds.
