@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2
 
 - CI runs mutmut and fails if the mutation score (killed + timeout) drops below 92%. Reviewing the surviving mutants added `tests/unit/test_client_contract.py` and widened mutmut's test selection; the score went from 61.6% to 93.0%, and the 70 remaining survivors are all equivalent (see `verification/mutation-survivors.md`). Removed the unused `_cache_enabled` attribute and an unreachable empty-selector check.
 - Dev dependencies: bumped `pytest` to `>=9.0.3,<10` (fixes PYSEC-2026-1845) and `pytest-asyncio` to `>=1.3,<2`, which pytest 9 requires.
@@ -8,6 +8,7 @@
 - A `Retry-After` longer than the backoff cap now stops retrying immediately with the final classification, instead of retrying early.
 - Each upstream attempt has a 30-second wall-clock deadline, so a slow-drip body cannot hold capacity indefinitely.
 - Identical concurrent cold requests share one upstream fetch. The cache stores validated response bytes, and payloads over 64 KiB are parsed off the event loop.
+- JSON nested deeper than 256 levels is rejected as `UPSTREAM_CONTRACT_MISMATCH` on every Python version (Python 3.14's parser accepts deeper nesting than 3.11's).
 - `deflate` responses without a zlib header, and multi-member `gzip` responses, now decode correctly.
 - Shutdown cleanup gives up after 10 seconds instead of waiting forever.
 - Binding Streamable HTTP to a non-loopback host logs a warning.
