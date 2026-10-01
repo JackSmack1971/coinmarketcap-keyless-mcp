@@ -1,0 +1,17 @@
+{
+  "base_url": "https://pro-api.coinmarketcap.com/public-api",
+  "generated_at": "2026-10-01T01:54:19.201348Z",
+  "routes": [
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "history mapping with points; result count=7",
+      "http_status": 200,
+      "latency_ms": 204,
+      "route": "/v1/altcoin-season-index/historical",
+      "tool": "cmc_altcoin_season_historical"
+    }
+  ],
+  "server_version": "0.1.0"
+}

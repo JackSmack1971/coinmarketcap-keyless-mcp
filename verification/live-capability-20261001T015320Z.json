@@ -1,0 +1,137 @@
+{
+  "base_url": "https://pro-api.coinmarketcap.com/public-api",
+  "generated_at": "2026-10-01T01:53:20.187963Z",
+  "routes": [
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; minimum shape passed",
+      "http_status": 200,
+      "latency_ms": 237,
+      "route": "/v1/cryptocurrency/map",
+      "tool": "cmc_crypto_map"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 74,
+      "route": "/v2/cryptocurrency/info",
+      "tool": "cmc_crypto_info"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 78,
+      "route": "/v3/cryptocurrency/quotes/latest",
+      "tool": "cmc_quotes_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 66,
+      "route": "/v3/cryptocurrency/listings/latest",
+      "tool": "cmc_listings_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 63,
+      "route": "/v1/global-metrics/quotes/latest",
+      "tool": "cmc_global_metrics_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 57,
+      "route": "/v3/fear-and-greed/latest",
+      "tool": "cmc_fear_greed_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 60,
+      "route": "/v3/fear-and-greed/historical",
+      "tool": "cmc_fear_greed_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 99,
+      "route": "/v1/altcoin-season-index/latest",
+      "tool": "cmc_altcoin_season_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "CONTRACT_MISMATCH",
+      "cmc_error_code": 0,
+      "evidence": "minimum endpoint shape did not pass",
+      "http_status": 200,
+      "latency_ms": 122,
+      "route": "/v1/altcoin-season-index/historical",
+      "tool": "cmc_altcoin_season_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; index structure present",
+      "http_status": 200,
+      "latency_ms": 63,
+      "route": "/v3/index/cmc100-latest",
+      "tool": "cmc_cmc100_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "index history structure present; result count=2",
+      "http_status": 200,
+      "latency_ms": 62,
+      "route": "/v3/index/cmc100-historical",
+      "tool": "cmc_cmc100_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; index structure present",
+      "http_status": 200,
+      "latency_ms": 59,
+      "route": "/v3/index/cmc20-latest",
+      "tool": "cmc_cmc20_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "index history structure present; result count=2",
+      "http_status": 200,
+      "latency_ms": 95,
+      "route": "/v3/index/cmc20-historical",
+      "tool": "cmc_cmc20_historical"
+    }
+  ],
+  "server_version": "0.1.0"
+}
