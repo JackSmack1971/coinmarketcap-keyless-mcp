@@ -14,3 +14,6 @@ mutants/
 .mypy_cache/
 .env
 .env.*
+runtime-requirements.txt
+.claude/settings.local.json
+CLAUDE.local.md
