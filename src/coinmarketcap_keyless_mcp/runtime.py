@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from .client import KeylessHttpClient
@@ -13,6 +13,18 @@ from .server import create_server
 
 Transport = Literal["stdio", "streamable-http"]
 ClientFactory = Callable[[], KeylessHttpClient]
+
+
+async def _complete_cleanup(awaitable: Awaitable[object]) -> None:
+    """Finish owned cleanup even if the caller is cancelled again."""
+
+    cleanup = asyncio.ensure_future(awaitable)
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            continue
+    cleanup.result()
 
 
 def _port(value: str) -> int:
@@ -35,8 +47,8 @@ async def run_server(
     """Run one transport using the shared MCP server construction path."""
 
     client = client_factory()
-    server = create_server(client)
     try:
+        server = create_server(client)
         if transport == "stdio":
             await server.run_stdio_async()
         elif transport == "streamable-http":
@@ -46,7 +58,7 @@ async def run_server(
     finally:
         close = getattr(client, "aclose", None)
         if close is not None:
-            await close()
+            await _complete_cleanup(close())
 
 
 async def _run_streamable_http(server: object, *, host: str, port: int) -> None:
@@ -61,7 +73,7 @@ async def _run_streamable_http(server: object, *, host: str, port: int) -> None:
         await http_server.serve()
     except asyncio.CancelledError:
         http_server.should_exit = True
-        await http_server.shutdown()
+        await _complete_cleanup(http_server.shutdown())
         raise
 
 
