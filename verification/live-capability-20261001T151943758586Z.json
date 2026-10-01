@@ -1,0 +1,137 @@
+{
+  "base_url": "https://pro-api.coinmarketcap.com/public-api",
+  "generated_at": "2026-10-01T15:19:43.757367Z",
+  "routes": [
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; minimum shape passed",
+      "http_status": 200,
+      "latency_ms": 142,
+      "route": "/v1/cryptocurrency/map",
+      "tool": "cmc_crypto_map"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 69,
+      "route": "/v2/cryptocurrency/info",
+      "tool": "cmc_crypto_info"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 174,
+      "route": "/v3/cryptocurrency/quotes/latest",
+      "tool": "cmc_quotes_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 182,
+      "route": "/v3/cryptocurrency/listings/latest",
+      "tool": "cmc_listings_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 70,
+      "route": "/v1/global-metrics/quotes/latest",
+      "tool": "cmc_global_metrics_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 175,
+      "route": "/v3/fear-and-greed/latest",
+      "tool": "cmc_fear_greed_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=list; result count=2",
+      "http_status": 200,
+      "latency_ms": 173,
+      "route": "/v3/fear-and-greed/historical",
+      "tool": "cmc_fear_greed_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; required keys/data present",
+      "http_status": 200,
+      "latency_ms": 68,
+      "route": "/v1/altcoin-season-index/latest",
+      "tool": "cmc_altcoin_season_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "history mapping with points; result count=7",
+      "http_status": 200,
+      "latency_ms": 68,
+      "route": "/v1/altcoin-season-index/historical",
+      "tool": "cmc_altcoin_season_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; index structure present",
+      "http_status": 200,
+      "latency_ms": 231,
+      "route": "/v3/index/cmc100-latest",
+      "tool": "cmc_cmc100_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "index history structure present; result count=2",
+      "http_status": 200,
+      "latency_ms": 181,
+      "route": "/v3/index/cmc100-historical",
+      "tool": "cmc_cmc100_historical"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "response type=mapping; index structure present",
+      "http_status": 200,
+      "latency_ms": 71,
+      "route": "/v3/index/cmc20-latest",
+      "tool": "cmc_cmc20_latest"
+    },
+    {
+      "attempts": 1,
+      "classification": "SUPPORTED",
+      "cmc_error_code": 0,
+      "evidence": "index history structure present; result count=2",
+      "http_status": 200,
+      "latency_ms": 75,
+      "route": "/v3/index/cmc20-historical",
+      "tool": "cmc_cmc20_historical"
+    }
+  ],
+  "server_version": "1.0.2"
+}
