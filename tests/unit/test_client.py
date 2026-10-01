@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import httpx
 import pytest
@@ -8,6 +10,7 @@ from coinmarketcap_keyless_mcp.client import (
     CACHE_TTLS_BY_ROUTE,
     DEFAULT_MAX_CONCURRENCY,
     KeylessHttpClient,
+    _retry_after_seconds,
     cache_key,
     serialize_query,
 )
@@ -26,7 +29,7 @@ async def run_client(handler, **kwargs):
 
 
 def test_query_serialization() -> None:
-    assert serialize_query({"ids": [1, 1027], "skip_invalid": False, "omit": None}) == {
+    assert serialize_query({"ids": [1, 1027], "omit": None, "skip_invalid": False}) == {
         "ids": "1,1027",
         "skip_invalid": "false",
     }
@@ -55,6 +58,9 @@ def test_cache_ttl_policy_is_route_authoritative() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
+        ({"max_attempts": 0}, "max_attempts"),
+        ({"backoff_base_seconds": -0.1}, "backoff values"),
+        ({"backoff_max_seconds": -0.1}, "backoff values"),
         ({"max_concurrency": 0}, "max_concurrency"),
         ({"max_concurrency": -1}, "max_concurrency"),
         ({"max_response_bytes": 0}, "max_response_bytes"),
@@ -72,6 +78,30 @@ def test_default_concurrency_is_two() -> None:
     client = KeylessHttpClient(_transport=httpx.MockTransport(lambda request: response({})))
     assert DEFAULT_MAX_CONCURRENCY == 2
     assert client._concurrency._value == 2  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_zero_backoff_bounds_are_allowed() -> None:
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(lambda request: response({})),
+        backoff_base_seconds=0,
+        backoff_max_seconds=0,
+    ) as client:
+        assert client._backoff_base_seconds == 0
+        assert client._backoff_max_seconds == 0
+
+
+@pytest.mark.asyncio
+async def test_default_http_timeouts_are_finite() -> None:
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(lambda request: response({}))
+    ) as client:
+        timeout = client._http.timeout
+        assert isinstance(timeout, httpx.Timeout)
+        assert all(
+            value is not None
+            for value in (timeout.connect, timeout.read, timeout.write, timeout.pool)
+        )
 
 
 class Clock:
@@ -191,15 +221,15 @@ async def test_failures_are_never_cached(failure: httpx.Response, expected_code:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("failure", "expected_exception"),
+    ("failure", "expected_exception", "expected_code"),
     [
-        (httpx.ReadTimeout("timed out"), CmcClientError),
-        (httpx.ConnectError("network"), CmcClientError),
-        (RuntimeError("internal"), RuntimeError),
+        (httpx.ReadTimeout("timed out"), CmcClientError, ErrorCode.UPSTREAM_TIMEOUT),
+        (httpx.ConnectError("network"), CmcClientError, ErrorCode.UPSTREAM_NETWORK_ERROR),
+        (RuntimeError("internal"), RuntimeError, None),
     ],
 )
 async def test_exception_failures_are_never_cached(
-    failure: Exception, expected_exception: type[Exception]
+    failure: Exception, expected_exception: type[Exception], expected_code: ErrorCode | None
 ) -> None:
     calls = 0
 
@@ -213,8 +243,11 @@ async def test_exception_failures_are_never_cached(
     async with KeylessHttpClient(
         _transport=httpx.MockTransport(handler), max_attempts=1
     ) as client:
-        with pytest.raises(expected_exception):
+        with pytest.raises(expected_exception) as caught:
             await client.get(ROUTES["cmc_quotes_latest"], {"ids": [1]})
+        if expected_code is not None:
+            assert isinstance(caught.value, CmcClientError)
+            assert caught.value.code is expected_code
         assert (await client.get(ROUTES["cmc_quotes_latest"], {"ids": [1]}))["data"] == {"ok": True}
     assert calls == 2
 
@@ -308,14 +341,21 @@ async def test_non_allowlisted_route_is_rejected_before_transport() -> None:
 
     transport = httpx.MockTransport(handler)
     async with KeylessHttpClient(_transport=transport) as client:
-        with pytest.raises(CmcClientError) as caught:
-            await client.get("/v1/../private")
-    assert caught.value.code is ErrorCode.INVALID_ARGUMENT
+        for route in (
+            "/v1/../private",
+            "/v1/%2e%2e/private",
+            "https://evil.example/v1/cryptocurrency/map",
+            f"{ROUTES['cmc_quotes_latest']}?ids=1",
+            f"{ROUTES['cmc_quotes_latest']}/",
+        ):
+            with pytest.raises(CmcClientError) as caught:
+                await client.get(route)
+            assert caught.value.code is ErrorCode.INVALID_ARGUMENT
     assert not called
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error_code", [0, "0"])
+@pytest.mark.parametrize("error_code", [0, 0.0, "0", " 0 "])
 async def test_numeric_and_string_zero_are_success(error_code) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return response({"status": {"error_code": error_code}, "data": []})
@@ -345,7 +385,16 @@ async def test_invalid_provider_error_code_is_contract_mismatch() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("payload", [{}, {"status": {}}, {"status": {"error_code": 0}}])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"status": {}},
+        {"status": {"notice": "missing code"}, "data": []},
+        {"status": {"error_code": False}, "data": []},
+        {"status": {"error_code": 0}},
+    ],
+)
 async def test_malformed_envelopes_are_rejected(payload) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return response(payload)
@@ -402,6 +451,20 @@ async def test_429_exhaustion_is_rate_limited() -> None:
     assert attempts == 3
 
 
+def test_retry_after_zero_and_exact_cap_are_accepted() -> None:
+    assert _retry_after_seconds("0", 2.0) == 0.0
+    assert _retry_after_seconds("2", 2.0) == 2.0
+    assert _retry_after_seconds("2.001", 2.0) is None
+
+
+def test_retry_after_http_date_is_parsed_as_a_bounded_delay() -> None:
+    retry_at = datetime.now(UTC) + timedelta(minutes=1)
+    header = format_datetime(retry_at, usegmt=True)
+    delay = _retry_after_seconds(header, 120.0)
+    assert delay is not None
+    assert 0.0 < delay <= 60.0
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_code", [502, 503, 504])
 async def test_selected_5xx_retries_then_succeeds(status_code: int) -> None:
@@ -417,6 +480,73 @@ async def test_selected_5xx_retries_then_succeeds(status_code: int) -> None:
     result = await run_client(handler, _sleep=lambda delay: _immediate())
     assert result["data"] == {"ok": True}
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["http", "network"])
+async def test_transient_retries_use_capped_exponential_jitter(failure_kind: str) -> None:
+    attempts = 0
+    random_ranges = []
+    sleeps = []
+
+    def choose_upper_bound(lower: float, upper: float) -> float:
+        random_ranges.append((lower, upper))
+        return upper
+
+    async def record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 4:
+            if failure_kind == "network":
+                raise httpx.ConnectError("network", request=request)
+            return response({}, 502)
+        return response({"status": {"error_code": 0}, "data": {"ok": True}})
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler),
+        max_attempts=4,
+        backoff_base_seconds=0.25,
+        backoff_max_seconds=0.75,
+        _random_uniform=choose_upper_bound,
+        _sleep=record_sleep,
+    ) as client:
+        assert (await client.get(ROUTES["cmc_quotes_latest"]))["data"] == {"ok": True}
+
+    assert attempts == 4
+    assert random_ranges == [(0.0, 0.25), (0.0, 0.5), (0.0, 0.75)]
+    assert sleeps == [0.25, 0.5, 0.75]
+
+
+@pytest.mark.asyncio
+async def test_http_500_is_classified_as_5xx_without_retry() -> None:
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return response({}, 500)
+
+    with pytest.raises(CmcClientError) as caught:
+        await run_client(handler)
+    assert caught.value.code is ErrorCode.UPSTREAM_5XX
+    assert caught.value.attempts == 1
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_response_exactly_at_size_limit_is_accepted() -> None:
+    content = b'{"status":{"error_code":0},"data":[]}'
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=content)
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), max_response_bytes=len(content)
+    ) as client:
+        assert (await client.get(ROUTES["cmc_quotes_latest"]))["data"] == []
 
 
 @pytest.mark.asyncio

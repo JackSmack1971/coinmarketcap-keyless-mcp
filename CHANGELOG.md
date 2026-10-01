@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Added CI and static quality gates, with stronger mutation and negative-path coverage.
+- Hardened streaming response-size enforcement, compressed-response and deep-JSON handling, and security boundaries.
+- Improved cleanup reliability and qualified isolated wheel and source distribution installs.
+- Completed fresh, credential-free live qualification of all 13 released routes.
+
 ## 1.0.0
 
 - Released 13 keyless CoinMarketCap MCP tools over stdio and Streamable HTTP transports.

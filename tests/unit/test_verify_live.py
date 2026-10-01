@@ -10,8 +10,8 @@ from coinmarketcap_keyless_mcp.client import KeylessHttpClient
 from coinmarketcap_keyless_mcp.contracts import BASE_URL, ROUTES
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 from coinmarketcap_keyless_mcp.verify_live import (
-    CapabilityClassification,
     LIVE_MATRIX,
+    CapabilityClassification,
     classify_error,
     verify_live,
     write_evidence,

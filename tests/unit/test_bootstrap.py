@@ -4,9 +4,7 @@ from dataclasses import fields
 from pathlib import Path
 
 import coinmarketcap_keyless_mcp as package
-from coinmarketcap_keyless_mcp import BASE_URL, ROUTES, TOOL_CONTRACTS
-from coinmarketcap_keyless_mcp import contracts
-
+from coinmarketcap_keyless_mcp import BASE_URL, ROUTES, TOOL_CONTRACTS, contracts
 
 EXPECTED_ROUTES = {
     "cmc_crypto_map": "/v1/cryptocurrency/map",

@@ -14,7 +14,6 @@ from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 from coinmarketcap_keyless_mcp.runtime import run_server
 from coinmarketcap_keyless_mcp.server import create_server
 
-
 NAMES = [contract.name for contract in TOOL_CONTRACTS]
 
 
@@ -48,13 +47,22 @@ asyncio.run(runtime.run_server("stdio", client_factory=FixtureClient))
 
 
 @pytest.mark.asyncio
-async def test_in_process_stdio_and_http_tool_names_are_identical() -> None:
+async def test_in_process_and_stdio_tool_names_are_identical() -> None:
     async with Client(create_server(FixtureClient())) as client:
         in_process = [tool.name for tool in (await client.list_tools()).tools]
 
     params = StdioServerParameters(command=sys.executable, args=["-c", _stdio_code()])
     async with Client(stdio_client(params)) as client:
         stdio = [tool.name for tool in (await client.list_tools()).tools]
+
+    assert in_process == stdio == NAMES
+
+
+@pytest.mark.streamable_http
+@pytest.mark.asyncio
+async def test_streamable_http_tool_names_match_in_process() -> None:
+    async with Client(create_server(FixtureClient())) as client:
+        in_process = [tool.name for tool in (await client.list_tools()).tools]
 
     port = _free_port()
     task = asyncio.create_task(run_server("streamable-http", port=port, client_factory=FixtureClient))
@@ -73,4 +81,4 @@ async def test_in_process_stdio_and_http_tool_names_are_identical() -> None:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-    assert in_process == stdio == http == NAMES
+    assert in_process == http == NAMES

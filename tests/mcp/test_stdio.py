@@ -9,7 +9,6 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 
-
 NAMES = [contract.name for contract in TOOL_CONTRACTS]
 ENVELOPE = {"status": {"error_code": 0, "notice": None}, "data": {"fixture": True}}
 
@@ -58,3 +57,23 @@ def test_runtime_rejects_invalid_ports() -> None:
 
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--port", "0"])
+
+
+@pytest.mark.asyncio
+async def test_stdio_idle_disconnect_exits_and_closes_client() -> None:
+    import asyncio
+
+    code = _subprocess_code().replace(
+        "    async def get(self, route, params=None):",
+        "    async def aclose(self):\n        import sys\n        print('CLIENT_CLOSED', file=sys.stderr)\n\n    async def get(self, route, params=None):",
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", code,
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    async with asyncio.timeout(10):
+        stdout, stderr = await process.communicate(b"")
+    assert process.returncode == 0
+    assert stdout == b""
+    assert b"CLIENT_CLOSED" in stderr

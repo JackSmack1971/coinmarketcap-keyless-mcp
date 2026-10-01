@@ -9,7 +9,8 @@ import logging
 import math
 import random
 import time
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+import zlib
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from types import MappingProxyType
@@ -30,6 +31,21 @@ RandomUniform = Callable[[float, float], float]
 Monotonic = Callable[[], float]
 
 logger = logging.getLogger(__name__)
+_MAX_PROVIDER_ERROR_MESSAGE_CHARS: Final = 256
+
+
+def _safe_provider_error_message(value: Any) -> str:
+    """Keep provider diagnostics useful, bounded, and single-line."""
+
+    if not isinstance(value, str) or not value:
+        return "CoinMarketCap application error"
+    safe = "".join(" " if ord(char) < 32 or 0x7F <= ord(char) <= 0x9F else char for char in value)
+    safe = " ".join(safe.split())
+    if not safe:
+        return "CoinMarketCap application error"
+    if len(safe) > _MAX_PROVIDER_ERROR_MESSAGE_CHARS:
+        safe = safe[: _MAX_PROVIDER_ERROR_MESSAGE_CHARS - 1] + "…"
+    return safe
 
 CACHE_TTLS_BY_ROUTE: Final[Mapping[str, float]] = MappingProxyType(
     {
@@ -178,7 +194,7 @@ class KeylessHttpClient:
         self._last_status_code: int | None = None
         self._http = httpx.AsyncClient(
             base_url=BASE_URL,
-            headers={"Accept": "application/json"},
+            headers={"Accept": "application/json", "Accept-Encoding": "gzip, deflate"},
             timeout=timeout or httpx.Timeout(10.0, connect=5.0),
             transport=_transport,
         )
@@ -212,7 +228,39 @@ class KeylessHttpClient:
             self._last_attempts = attempt
             try:
                 async with self._concurrency:
-                    response = await self._http.get(route, params=query)
+                    async with self._http.stream("GET", route, params=query) as streamed:
+                        # HTTP errors are classified from headers alone. Do not
+                        # consume an error body or hold capacity during backoff.
+                        response = streamed
+                        if streamed.status_code < 400:
+                            body = bytearray()
+                            declared = streamed.headers.get("Content-Length")
+                            if declared is not None and declared.isdecimal():
+                                normalized_length = declared.lstrip("0") or "0"
+                                maximum = str(self._max_response_bytes)
+                                if len(normalized_length) > len(maximum) or (
+                                    len(normalized_length) == len(maximum)
+                                    and normalized_length > maximum
+                                ):
+                                    self._raise_oversized(streamed, attempt)
+                            try:
+                                async for chunk in _bounded_decoded_chunks(
+                                    streamed, self._max_response_bytes
+                                ):
+                                    remaining = self._max_response_bytes + 1 - len(body)
+                                    body.extend(chunk[:remaining])
+                                    if len(body) > self._max_response_bytes:
+                                        self._raise_oversized(streamed, attempt)
+                            except zlib.error as exc:
+                                raise CmcClientError(
+                                    ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+                                    "CoinMarketCap response has invalid compressed data",
+                                    status_code=streamed.status_code,
+                                    attempts=attempt,
+                                ) from exc
+                            response = httpx.Response(
+                                streamed.status_code, content=bytes(body), request=streamed.request
+                            )
             except httpx.TimeoutException as exc:
                 if attempt < self._max_attempts:
                     await self._backoff(attempt)
@@ -257,19 +305,29 @@ class KeylessHttpClient:
                     status_code=response.status_code,
                     attempts=attempt,
                 )
-            if len(response.content) > self._max_response_bytes:
+            result = self._parse_envelope(response, attempt)
+            try:
+                if self._cache is not None and ttl > 0:
+                    await self._cache.set(key, result, ttl)
+                return copy.deepcopy(result)
+            except RecursionError as exc:
                 raise CmcClientError(
                     ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
-                    "CoinMarketCap response exceeds the configured size limit",
+                    "CoinMarketCap response structure is too deeply nested",
                     status_code=response.status_code,
                     attempts=attempt,
-                )
-            result = self._parse_envelope(response, attempt)
-            if self._cache is not None and ttl > 0:
-                await self._cache.set(key, result, ttl)
-            return copy.deepcopy(result)
+                ) from exc
 
         raise AssertionError("retry loop exhausted without a result")
+
+    @staticmethod
+    def _raise_oversized(response: httpx.Response, attempt: int) -> None:
+        raise CmcClientError(
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response exceeds the configured size limit",
+            status_code=response.status_code,
+            attempts=attempt,
+        )
 
     async def _retry_delay(self, response: httpx.Response, attempt: int) -> None:
         retry_after = _retry_after_seconds(
@@ -288,8 +346,8 @@ class KeylessHttpClient:
     @staticmethod
     def _parse_envelope(response: httpx.Response, attempts: int) -> dict[str, Any]:
         try:
-            payload = response.json()
-        except (ValueError, TypeError) as exc:
+            payload = json.loads(response.content, object_pairs_hook=_unique_object)
+        except (ValueError, TypeError, RecursionError) as exc:
             raise CmcClientError(
                 ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
                 "CoinMarketCap response was not valid JSON",
@@ -327,9 +385,64 @@ class KeylessHttpClient:
         if not is_success:
             raise CmcClientError(
                 ErrorCode.UPSTREAM_APPLICATION_ERROR,
-                str(status.get("error_message") or "CoinMarketCap application error"),
+                _safe_provider_error_message(status.get("error_message")),
                 status_code=response.status_code,
                 attempts=attempts,
                 provider_error_code=error_code,
             )
         return payload
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object field")
+        result[key] = value
+    return result
+
+
+async def _bounded_decoded_chunks(
+    response: httpx.Response, maximum: int
+) -> AsyncIterator[bytes]:
+    """Decode advertised encodings without allowing an unbounded output chunk."""
+
+    if response.is_stream_consumed:
+        yield response.content[: maximum + 1]
+        return
+    encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+    if encoding in {"", "identity"}:
+        async for chunk in response.aiter_raw():
+            yield chunk[: maximum + 1]
+        return
+    if encoding == "gzip":
+        decoder = zlib.decompressobj(zlib.MAX_WBITS | 16)
+    elif encoding == "deflate":
+        decoder = zlib.decompressobj()
+    else:
+        raise CmcClientError(
+            ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+            "CoinMarketCap response uses an unsupported content encoding",
+            status_code=response.status_code,
+        )
+    produced = 0
+    async for raw_chunk in response.aiter_raw():
+        remaining = maximum + 1 - produced
+        decoded = decoder.decompress(raw_chunk, remaining)
+        produced += len(decoded)
+        if decoded:
+            yield decoded
+        if produced > maximum:
+            return
+        while decoder.unconsumed_tail:
+            remaining = maximum + 1 - produced
+            decoded = decoder.decompress(decoder.unconsumed_tail, remaining)
+            produced += len(decoded)
+            if decoded:
+                yield decoded
+            if produced > maximum:
+                return
+    remaining = maximum + 1 - produced
+    tail = decoder.flush(remaining)
+    if tail:
+        yield tail

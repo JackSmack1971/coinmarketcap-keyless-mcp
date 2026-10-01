@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "coinmarketcap-keyless-mcp"
-version = "1.0.0"
+version = "1.0.1"
 description = "Bounded, read-only MCP contracts for selected CoinMarketCap public routes."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,16 +18,45 @@ coinmarketcap-keyless-mcp = "coinmarketcap_keyless_mcp.runtime:main"
 
 [dependency-groups]
 dev = [
+  "mutmut>=3.6,<4",
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.24,<1",
+  "ruff>=0.15,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/coinmarketcap_keyless_mcp"]
 
+[tool.hatch.build.targets.sdist]
+only-include = ["src/coinmarketcap_keyless_mcp", "README.md", "pyproject.toml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["streamable_http: tests that start the local Streamable HTTP transport"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mutmut]
+source_paths = ["src/coinmarketcap_keyless_mcp"]
+only_mutate = [
+  "src/coinmarketcap_keyless_mcp/client.py",
+  "src/coinmarketcap_keyless_mcp/contracts.py",
+  "src/coinmarketcap_keyless_mcp/models.py",
+  "src/coinmarketcap_keyless_mcp/server.py",
+  "src/coinmarketcap_keyless_mcp/errors.py",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/unit/test_client.py",
+  "tests/unit/test_models.py",
+  "tests/contract/test_envelopes.py",
+  "tests/mcp/test_phase2_acceptance.py",
+  "tests/mcp/test_tools.py",
+]
+timeout_constant = 1.0
+timeout_multiplier = 5.0
