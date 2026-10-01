@@ -27,6 +27,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/coinmarketcap_keyless_mcp"]
 
+[tool.hatch.build.targets.sdist]
+only-include = ["src/coinmarketcap_keyless_mcp", "README.md", "pyproject.toml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
