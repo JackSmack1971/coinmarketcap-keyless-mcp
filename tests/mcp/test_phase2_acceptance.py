@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from mcp import Client
 
+import coinmarketcap_keyless_mcp.server as server_module
 from coinmarketcap_keyless_mcp.contracts import ROUTES, TOOL_CONTRACTS
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 from coinmarketcap_keyless_mcp.server import create_server
@@ -31,6 +32,16 @@ class RecordingClient:
 
 def schema(server, name: str) -> dict[str, Any]:
     return server._tool_manager._tools[name].parameters["properties"]
+
+
+@pytest.mark.asyncio
+async def test_server_factory_uses_default_client_when_none_is_injected(monkeypatch) -> None:
+    recording = RecordingClient()
+    monkeypatch.setattr(server_module, "KeylessHttpClient", lambda: recording)
+    async with Client(create_server()) as client:
+        result = await client.call_tool("cmc_fear_greed_latest", {})
+    assert not result.is_error
+    assert recording.calls == [(ROUTES["cmc_fear_greed_latest"], None)]
 
 
 @pytest.mark.asyncio
@@ -79,6 +90,11 @@ async def test_selectors_are_exactly_one_and_collection_rules_are_runtime_enforc
     assert [result.is_error for result in results] == [True, False, False, False, True, True, True, True, True, True]
     assert duplicate_convert.is_error
     assert len(recording.calls) == 3
+    assert recording.calls == [
+        (ROUTES["cmc_crypto_info"], {"id": "1", "skip_invalid": False}),
+        (ROUTES["cmc_crypto_info"], {"slug": "bitcoin", "skip_invalid": False}),
+        (ROUTES["cmc_crypto_info"], {"symbol": "BTC", "skip_invalid": False}),
+    ]
 
 
 @pytest.mark.asyncio
@@ -89,14 +105,20 @@ async def test_serialization_output_and_historical_validation() -> None:
         await client.call_tool("cmc_quotes_latest", {"symbols": ["BTC"], "convert": ["USD", "EUR"]})
         await client.call_tool("cmc_listings_latest", {"start": 2, "limit": 3, "convert": ["USD"], "sort_dir": "asc"})
         await client.call_tool("cmc_cmc100_historical", {"time_start": "2025-01-01", "time_end": "2025-01-01T05:00:00-05:00"})
+        equal_bounds = await client.call_tool(
+            "cmc_cmc20_historical",
+            {"time_start": "2025-01-01T00:00:00Z", "time_end": "2024-12-31T19:00:00-05:00"},
+        )
         invalid = await client.call_tool("cmc_cmc20_historical", {"time_start": "not-a-time"})
         reversed_bounds = await client.call_tool("cmc_cmc20_historical", {"time_start": "2", "time_end": "1"})
+    assert not equal_bounds.is_error
     assert invalid.is_error and reversed_bounds.is_error
     assert recording.calls == [
         (ROUTES["cmc_crypto_info"], {"id": "1,2", "skip_invalid": True}),
         (ROUTES["cmc_quotes_latest"], {"symbol": "BTC", "convert": "USD,EUR", "skip_invalid": False}),
         (ROUTES["cmc_listings_latest"], {"start": 2, "limit": 3, "convert": "USD", "sort": "market_cap", "sort_dir": "asc"}),
         (ROUTES["cmc_cmc100_historical"], {"count": 5, "interval": "daily", "time_start": "2025-01-01", "time_end": "2025-01-01T05:00:00-05:00"}),
+        (ROUTES["cmc_cmc20_historical"], {"count": 5, "interval": "daily", "time_start": "2025-01-01T00:00:00Z", "time_end": "2024-12-31T19:00:00-05:00"}),
     ]
 
 
