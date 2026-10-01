@@ -11,6 +11,7 @@ import asyncio
 import gzip
 import json
 import logging
+import random
 import zlib
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -44,6 +45,10 @@ class CountingStream(httpx.AsyncByteStream):
         for chunk in self.chunks:
             self.consumed += len(chunk)
             yield chunk
+
+
+def random_bytes(size: int) -> bytes:
+    return random.Random(0).randbytes(size)
 
 
 def chunked(body: bytes, size: int) -> list[bytes]:
@@ -277,8 +282,12 @@ async def test_default_headers_timeout_and_call_metadata() -> None:
     async with KeylessHttpClient(
         _transport=httpx.MockTransport(_body(json.dumps(VALID).encode()))
     ) as client:
-        assert client._http.headers["accept"] == "application/json"
-        assert client._http.headers["accept-encoding"] == "gzip, deflate"
+        assert dict(client._http.headers) == {
+            "accept": "application/json",
+            "accept-encoding": "gzip, deflate",
+            "connection": "keep-alive",
+            "user-agent": client._http.headers["user-agent"],
+        }
         assert client._http.timeout == httpx.Timeout(10.0, connect=5.0)
         assert (client._last_attempts, client._last_status_code) == (0, None)
         await client.get(ROUTE)
@@ -333,17 +342,21 @@ def test_cache_key_format_is_exact() -> None:
 @pytest.mark.asyncio
 async def test_ttl_cache_order_expiry_and_copies() -> None:
     now = [0.0]
+    cache = _TtlCache(lambda: now[0], max_entries=3)
+    for key in ("a", "b", "c"):
+        await cache.set(key, {"v": []}, 10.0)
+    await cache.set("b", {"v": []}, 10.0)  # Re-setting moves "b" to most recent, evicting nothing.
+    assert list(cache._entries) == ["a", "c", "b"]
+
     cache = _TtlCache(lambda: now[0], max_entries=2)
-    await cache.set("a", {"v": []}, 10.0)
-    await cache.set("b", {"v": []}, 1.0)
-    await cache.set("a", {"v": []}, 10.0)  # Re-setting moves "a" to most recent.
-    assert list(cache._entries) == ["b", "a"]
-    now[0] = 1.0  # "b" expires exactly now and is purged instead of evicting "a".
-    await cache.set("c", {"v": []}, 10.0)
-    assert list(cache._entries) == ["a", "c"]
-    value = await cache.get("a")
+    await cache.set("long", {"v": []}, 10.0)
+    await cache.set("short", {"v": []}, 1.0)
+    now[0] = 1.0  # "short" expires exactly now: purged instead of evicting older "long".
+    await cache.set("new", {"v": []}, 10.0)
+    assert list(cache._entries) == ["long", "new"]
+    value = await cache.get("long")
     value["v"].append("mutation")
-    assert await cache.get("a") == {"v": []}
+    assert await cache.get("long") == {"v": []}
 
 
 @pytest.mark.asyncio
@@ -521,3 +534,89 @@ async def test_deflate_decodes_one_byte_chunks_and_ignores_trailing_bytes(varian
 async def test_single_byte_deflate_body_and_empty_encoding_header() -> None:
     assert await _decode([b"\x03"], "deflate", 100) == []  # Raw deflate of an empty body.
     assert b"".join(await _decode([b'{"a":1}'], "", 100)) == b'{"a":1}'
+
+
+RETRIED_CASES = [
+    "404",
+    "not-json",
+    "no-envelope",
+    "no-data",
+    "bad-error-code",
+    "application",
+    "too-deep",
+    "oversized-body",
+    "bad-gzip",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", RETRIED_CASES)
+async def test_errors_after_a_retry_report_the_final_attempt(case: str) -> None:
+    final_handler, expected = ERROR_CASES[case]
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503) if calls == 1 else final_handler(request)
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler),
+        max_attempts=3,
+        max_response_bytes=1024,
+        _sleep=no_sleep,
+    ) as client:
+        with pytest.raises(CmcClientError) as caught:
+            await client.get(ROUTE)
+    assert (caught.value.code, caught.value.message, caught.value.attempts) == (
+        expected[0],
+        expected[1],
+        2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_zero_content_length_is_not_treated_as_oversized() -> None:
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(_body(b"", headers={"Content-Length": "000"})),
+        max_response_bytes=10,
+    ) as client:
+        with pytest.raises(CmcClientError) as caught:
+            await client.get(ROUTE)
+    assert caught.value.message == "CoinMarketCap response was not valid JSON"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+async def test_decoder_bound_holds_across_many_small_outputs(encoding: str) -> None:
+    expanded = random_bytes(64 * 1024)  # Incompressible: each raw chunk yields a little output.
+    raw = gzip.compress(expanded) if encoding == "gzip" else zlib.compress(expanded)
+    chunks = await _decode(chunked(raw, 300), encoding, 1000)
+    assert len(chunks) > 1
+    assert sum(len(chunk) for chunk in chunks) == 1001
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_only_waiter_cancels_the_fetch_cleanly() -> None:
+    entered = asyncio.Event()
+    errors: list[dict] = []
+    loop = asyncio.get_running_loop()
+    loop.set_exception_handler(lambda loop, context: errors.append(context))
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        entered.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    try:
+        async with KeylessHttpClient(_transport=httpx.MockTransport(handler)) as client:
+            task = asyncio.create_task(client.get(ROUTE))
+            await entered.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert client._inflight == {}
+        await asyncio.sleep(0)
+    finally:
+        loop.set_exception_handler(None)
+    assert errors == []
