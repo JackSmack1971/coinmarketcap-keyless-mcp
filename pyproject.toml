@@ -59,9 +59,18 @@ only_mutate = [
 pytest_add_cli_args_test_selection = [
   "tests/unit/test_client.py",
   "tests/unit/test_models.py",
+  "tests/unit/test_resource_stress.py",
+  "tests/security/test_h5.py",
   "tests/contract/test_envelopes.py",
   "tests/mcp/test_phase2_acceptance.py",
   "tests/mcp/test_tools.py",
+]
+# Subprocess tests import the installed package, not mutmut's mutated copy.
+pytest_add_cli_args = [
+  "--deselect",
+  "tests/security/test_h5.py::test_stdio_startup_discovery_call_failure_and_shutdown_keep_stdout_protocol_only",
+  "--deselect",
+  "tests/security/test_h5.py::test_cli_argument_failure_is_nonzero_and_traceback_free",
 ]
 timeout_constant = 1.0
 timeout_multiplier = 5.0
