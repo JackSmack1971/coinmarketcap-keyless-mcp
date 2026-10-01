@@ -55,7 +55,9 @@ def test_phase_zero_locks_exact_route_surface() -> None:
 def test_contracts_are_one_to_one_and_described() -> None:
     assert len({contract.name for contract in TOOL_CONTRACTS}) == 13
     assert len(set(ROUTES.values())) == 13
-    assert {contract.name: contract.description for contract in TOOL_CONTRACTS} == EXPECTED_DESCRIPTIONS
+    assert {
+        contract.name: contract.description for contract in TOOL_CONTRACTS
+    } == EXPECTED_DESCRIPTIONS
 
 
 def test_public_contract_has_no_auth_or_generic_proxy_surface() -> None:

@@ -37,7 +37,9 @@ CALL_ARGS = {
 
 
 def _properties(server) -> dict[str, dict[str, Any]]:
-    return {tool.name: tool.parameters["properties"] for tool in server._tool_manager._tools.values()}
+    return {
+        tool.name: tool.parameters["properties"] for tool in server._tool_manager._tools.values()
+    }
 
 
 @pytest.mark.asyncio
@@ -57,7 +59,9 @@ def test_discovered_schemas_match_normative_bounds() -> None:
     properties = _properties(server)
 
     assert properties["cmc_crypto_map"]["listing_status"]["items"]["enum"] == [
-        "active", "inactive", "untracked"
+        "active",
+        "inactive",
+        "untracked",
     ]
     assert properties["cmc_crypto_map"]["listing_status"]["default"] == ["active"]
     assert properties["cmc_crypto_map"]["symbols"]["minItems"] == 1
@@ -116,7 +120,9 @@ async def test_unknown_arguments_and_cross_field_errors_are_rejected_before_upst
         ("cmc_quotes_latest", {"symbols": ["X" * 65]}),
     ],
 )
-async def test_list_items_cannot_smuggle_separators_past_bounds(tool: str, arguments: dict[str, Any]) -> None:
+async def test_list_items_cannot_smuggle_separators_past_bounds(
+    tool: str, arguments: dict[str, Any]
+) -> None:
     recording = RecordingClient()
     async with Client(create_server(recording)) as client:
         result = await client.call_tool(tool, arguments)

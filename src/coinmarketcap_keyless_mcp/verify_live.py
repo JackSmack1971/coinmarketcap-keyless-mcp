@@ -82,7 +82,12 @@ def _shape_check(data: Any, shape: str) -> str:
         return "response type=mapping; required keys/data present"
     if shape == "nonempty_list" and isinstance(data, list) and bool(data):
         return "response type=list; result count=%d" % len(data)
-    if shape == "history_mapping" and isinstance(data, Mapping) and isinstance(data.get("points"), list) and bool(data["points"]):
+    if (
+        shape == "history_mapping"
+        and isinstance(data, Mapping)
+        and isinstance(data.get("points"), list)
+        and bool(data["points"])
+    ):
         return "history mapping with points; result count=%d" % len(data["points"])
     if shape == "index_latest" and isinstance(data, Mapping) and bool(data):
         return "response type=mapping; index structure present"
@@ -97,7 +102,10 @@ def _shape_check(data: Any, shape: str) -> str:
 
 def _positive_unsupported(error: CmcClientError) -> bool:
     text = error.message.lower()
-    return any(phrase in text for phrase in ("unsupported keyless", "route unavailable", "not available to keyless"))
+    return any(
+        phrase in text
+        for phrase in ("unsupported keyless", "route unavailable", "not available to keyless")
+    )
 
 
 def classify_error(error: CmcClientError) -> CapabilityClassification:
@@ -144,7 +152,9 @@ async def verify_live(
 ) -> dict[str, Any]:
     """Run selected probes serially and return only concise evidence."""
 
-    selected = [probe for probe in LIVE_MATRIX if selected_tools is None or probe.tool in selected_tools]
+    selected = [
+        probe for probe in LIVE_MATRIX if selected_tools is None or probe.tool in selected_tools
+    ]
     unknown = (selected_tools or set()) - {probe.tool for probe in LIVE_MATRIX}
     if unknown:
         raise ValueError("unknown tool(s): " + ", ".join(sorted(unknown)))
@@ -155,11 +165,44 @@ async def verify_live(
             try:
                 payload = await client.get(probe.route, probe.params)
                 evidence = _shape_check(payload.get("data"), probe.shape)
-                routes.append(RouteEvidence(probe.tool, probe.route, "SUPPORTED", getattr(client, "_last_status_code", 200), 0, getattr(client, "_last_attempts", 1), int((time.monotonic() - started) * 1000), evidence))
+                routes.append(
+                    RouteEvidence(
+                        probe.tool,
+                        probe.route,
+                        "SUPPORTED",
+                        getattr(client, "_last_status_code", 200),
+                        0,
+                        getattr(client, "_last_attempts", 1),
+                        int((time.monotonic() - started) * 1000),
+                        evidence,
+                    )
+                )
             except ValueError as exc:
-                routes.append(RouteEvidence(probe.tool, probe.route, "CONTRACT_MISMATCH", 200, 0, 1, int((time.monotonic() - started) * 1000), str(exc)))
+                routes.append(
+                    RouteEvidence(
+                        probe.tool,
+                        probe.route,
+                        "CONTRACT_MISMATCH",
+                        200,
+                        0,
+                        1,
+                        int((time.monotonic() - started) * 1000),
+                        str(exc),
+                    )
+                )
             except CmcClientError as exc:
-                routes.append(RouteEvidence(probe.tool, probe.route, classify_error(exc).value, exc.status_code, exc.provider_error_code, exc.attempts, int((time.monotonic() - started) * 1000), exc.message))
+                routes.append(
+                    RouteEvidence(
+                        probe.tool,
+                        probe.route,
+                        classify_error(exc).value,
+                        exc.status_code,
+                        exc.provider_error_code,
+                        exc.attempts,
+                        int((time.monotonic() - started) * 1000),
+                        exc.message,
+                    )
+                )
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "base_url": BASE_URL,
@@ -177,8 +220,12 @@ def write_evidence(report: Mapping[str, Any], directory: Path = Path("verificati
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Opt-in live CoinMarketCap keyless capability verification")
-    parser.add_argument("--tool", action="append", dest="tools", help="rerun one or more tools only")
+    parser = argparse.ArgumentParser(
+        description="Opt-in live CoinMarketCap keyless capability verification"
+    )
+    parser.add_argument(
+        "--tool", action="append", dest="tools", help="rerun one or more tools only"
+    )
     return parser
 
 

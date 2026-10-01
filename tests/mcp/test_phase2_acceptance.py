@@ -18,7 +18,9 @@ NESTED_ENVELOPE = {
 
 
 class RecordingClient:
-    def __init__(self, result: dict[str, Any] | None = None, error: CmcClientError | None = None) -> None:
+    def __init__(
+        self, result: dict[str, Any] | None = None, error: CmcClientError | None = None
+    ) -> None:
         self.calls: list[tuple[str, dict[str, Any] | None]] = []
         self.result = result or NESTED_ENVELOPE
         self.error = error
@@ -51,18 +53,41 @@ async def test_discovered_surface_and_schema_are_exactly_bounded() -> None:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
     assert len(NAMES) == 13
-    assert all(set(tool.input_schema["properties"]) == set(schema(server, tool.name)) for tool in tools.tools)
+    assert all(
+        set(tool.input_schema["properties"]) == set(schema(server, tool.name))
+        for tool in tools.tools
+    )
     assert all(tool.input_schema.get("additionalProperties") is False for tool in tools.tools)
     assert schema(server, "cmc_listings_latest")["sort"]["enum"] == [
-        "market_cap", "market_cap_strict", "name", "symbol", "date_added", "price",
-        "circulating_supply", "total_supply", "max_supply", "num_market_pairs",
-        "market_cap_by_total_supply_strict", "volume_24h", "volume_7d", "volume_30d",
-        "percent_change_1h", "percent_change_24h", "percent_change_7d",
+        "market_cap",
+        "market_cap_strict",
+        "name",
+        "symbol",
+        "date_added",
+        "price",
+        "circulating_supply",
+        "total_supply",
+        "max_supply",
+        "num_market_pairs",
+        "market_cap_by_total_supply_strict",
+        "volume_24h",
+        "volume_7d",
+        "volume_30d",
+        "percent_change_1h",
+        "percent_change_24h",
+        "percent_change_7d",
     ]
     assert set(schema(server, "cmc_altcoin_season_historical")["timeframe"]["enum"]) == {
-        "7d", "30d", "90d"
+        "7d",
+        "30d",
+        "90d",
     }
-    for name in ("cmc_fear_greed_latest", "cmc_altcoin_season_latest", "cmc_cmc100_latest", "cmc_cmc20_latest"):
+    for name in (
+        "cmc_fear_greed_latest",
+        "cmc_altcoin_season_latest",
+        "cmc_cmc100_latest",
+        "cmc_cmc20_latest",
+    ):
         assert schema(server, name) == {}
 
 
@@ -70,7 +95,10 @@ async def test_discovered_surface_and_schema_are_exactly_bounded() -> None:
 @pytest.mark.parametrize("field", ["listing_status", "start", "limit", "sort"])
 async def test_crypto_map_rejects_explicit_default_with_symbols(field: str) -> None:
     recording = RecordingClient()
-    args = {"symbols": ["BTC"], field: {"listing_status": ["active"], "start": 1, "limit": 100, "sort": "id"}[field]}
+    args = {
+        "symbols": ["BTC"],
+        field: {"listing_status": ["active"], "start": 1, "limit": 100, "sort": "id"}[field],
+    }
     async with Client(create_server(recording)) as client:
         result = await client.call_tool("cmc_crypto_map", args)
     assert result.is_error
@@ -82,12 +110,34 @@ async def test_selectors_are_exactly_one_and_collection_rules_are_runtime_enforc
     recording = RecordingClient()
     async with Client(create_server(recording)) as client:
         results = []
-        for args in ({}, {"ids": [1]}, {"slugs": ["bitcoin"]}, {"symbols": ["BTC"]},
-                     {"ids": [1], "symbols": ["BTC"]}, {"ids": [1], "slugs": ["bitcoin"], "symbols": ["BTC"]},
-                     {"ids": [1, 1]}, {"ids": [0]}, {"slugs": ["Bitcoin"]}, {"ids": []}):
+        for args in (
+            {},
+            {"ids": [1]},
+            {"slugs": ["bitcoin"]},
+            {"symbols": ["BTC"]},
+            {"ids": [1], "symbols": ["BTC"]},
+            {"ids": [1], "slugs": ["bitcoin"], "symbols": ["BTC"]},
+            {"ids": [1, 1]},
+            {"ids": [0]},
+            {"slugs": ["Bitcoin"]},
+            {"ids": []},
+        ):
             results.append(await client.call_tool("cmc_crypto_info", args))
-        duplicate_convert = await client.call_tool("cmc_quotes_latest", {"ids": [1], "convert": ["USD", "USD"]})
-    assert [result.is_error for result in results] == [True, False, False, False, True, True, True, True, True, True]
+        duplicate_convert = await client.call_tool(
+            "cmc_quotes_latest", {"ids": [1], "convert": ["USD", "USD"]}
+        )
+    assert [result.is_error for result in results] == [
+        True,
+        False,
+        False,
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
     assert duplicate_convert.is_error
     assert len(recording.calls) == 3
     assert recording.calls == [
@@ -103,22 +153,51 @@ async def test_serialization_output_and_historical_validation() -> None:
     async with Client(create_server(recording)) as client:
         await client.call_tool("cmc_crypto_info", {"ids": [1, 2], "skip_invalid": True})
         await client.call_tool("cmc_quotes_latest", {"symbols": ["BTC"], "convert": ["USD", "EUR"]})
-        await client.call_tool("cmc_listings_latest", {"start": 2, "limit": 3, "convert": ["USD"], "sort_dir": "asc"})
-        await client.call_tool("cmc_cmc100_historical", {"time_start": "2025-01-01", "time_end": "2025-01-01T05:00:00-05:00"})
+        await client.call_tool(
+            "cmc_listings_latest", {"start": 2, "limit": 3, "convert": ["USD"], "sort_dir": "asc"}
+        )
+        await client.call_tool(
+            "cmc_cmc100_historical",
+            {"time_start": "2025-01-01", "time_end": "2025-01-01T05:00:00-05:00"},
+        )
         equal_bounds = await client.call_tool(
             "cmc_cmc20_historical",
             {"time_start": "2025-01-01T00:00:00Z", "time_end": "2024-12-31T19:00:00-05:00"},
         )
         invalid = await client.call_tool("cmc_cmc20_historical", {"time_start": "not-a-time"})
-        reversed_bounds = await client.call_tool("cmc_cmc20_historical", {"time_start": "2", "time_end": "1"})
+        reversed_bounds = await client.call_tool(
+            "cmc_cmc20_historical", {"time_start": "2", "time_end": "1"}
+        )
     assert not equal_bounds.is_error
     assert invalid.is_error and reversed_bounds.is_error
     assert recording.calls == [
         (ROUTES["cmc_crypto_info"], {"id": "1,2", "skip_invalid": True}),
-        (ROUTES["cmc_quotes_latest"], {"symbol": "BTC", "convert": "USD,EUR", "skip_invalid": False}),
-        (ROUTES["cmc_listings_latest"], {"start": 2, "limit": 3, "convert": "USD", "sort": "market_cap", "sort_dir": "asc"}),
-        (ROUTES["cmc_cmc100_historical"], {"count": 5, "interval": "daily", "time_start": "2025-01-01", "time_end": "2025-01-01T05:00:00-05:00"}),
-        (ROUTES["cmc_cmc20_historical"], {"count": 5, "interval": "daily", "time_start": "2025-01-01T00:00:00Z", "time_end": "2024-12-31T19:00:00-05:00"}),
+        (
+            ROUTES["cmc_quotes_latest"],
+            {"symbol": "BTC", "convert": "USD,EUR", "skip_invalid": False},
+        ),
+        (
+            ROUTES["cmc_listings_latest"],
+            {"start": 2, "limit": 3, "convert": "USD", "sort": "market_cap", "sort_dir": "asc"},
+        ),
+        (
+            ROUTES["cmc_cmc100_historical"],
+            {
+                "count": 5,
+                "interval": "daily",
+                "time_start": "2025-01-01",
+                "time_end": "2025-01-01T05:00:00-05:00",
+            },
+        ),
+        (
+            ROUTES["cmc_cmc20_historical"],
+            {
+                "count": 5,
+                "interval": "daily",
+                "time_start": "2025-01-01T00:00:00Z",
+                "time_end": "2024-12-31T19:00:00-05:00",
+            },
+        ),
     ]
 
 

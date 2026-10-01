@@ -54,6 +54,7 @@ def _safe_provider_error_message(value: Any) -> str:
         safe = safe[: _MAX_PROVIDER_ERROR_MESSAGE_CHARS - 1] + "…"
     return safe
 
+
 def _http_error_detail(body: bytes) -> str | None:
     """Extract a provider error message from a small 4xx body, if it has one."""
 
@@ -496,9 +497,8 @@ class KeylessHttpClient:
                 status_code=response.status_code,
                 attempts=attempts,
             )
-        is_success = (
-            (isinstance(error_code, str) and error_code.strip() == "0")
-            or (isinstance(error_code, (int, float)) and error_code == 0)
+        is_success = (isinstance(error_code, str) and error_code.strip() == "0") or (
+            isinstance(error_code, (int, float)) and error_code == 0
         )
         if not is_success:
             raise CmcClientError(
@@ -520,9 +520,7 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-async def _bounded_decoded_chunks(
-    response: httpx.Response, maximum: int
-) -> AsyncIterator[bytes]:
+async def _bounded_decoded_chunks(response: httpx.Response, maximum: int) -> AsyncIterator[bytes]:
     """Decode advertised encodings without allowing an unbounded output chunk."""
 
     if response.is_stream_consumed:

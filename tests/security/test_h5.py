@@ -245,7 +245,9 @@ async def test_retry_after_abuse_is_capped_and_exhaustion_is_stable(retry_after:
         delays.append(delay)
 
     async with KeylessHttpClient(
-        _transport=httpx.MockTransport(handler), _sleep=record, _random_uniform=lambda low, high: high
+        _transport=httpx.MockTransport(handler),
+        _sleep=record,
+        _random_uniform=lambda low, high: high,
     ) as client:
         with pytest.raises(CmcClientError) as caught:
             await client.get(ROUTE)
@@ -368,16 +370,29 @@ def test_cli_transport_and_port_validation() -> None:
     parser = build_parser()
     assert parser.parse_args([]).transport == "stdio"
     assert parser.parse_args([]).host == "127.0.0.1"
-    assert parser.parse_args(["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "65535"]).host == "0.0.0.0"
-    for args in (["--transport", "unknown"], ["--port", "x"], ["--port", "0"], ["--port", "65536"], ["--extra"]):
+    assert (
+        parser.parse_args(
+            ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "65535"]
+        ).host
+        == "0.0.0.0"
+    )
+    for args in (
+        ["--transport", "unknown"],
+        ["--port", "x"],
+        ["--port", "0"],
+        ["--port", "65536"],
+        ["--extra"],
+    ):
         with pytest.raises(SystemExit) as caught:
             parser.parse_args(args)
         assert caught.value.code == 2
 
 
 @pytest.mark.asyncio
-async def test_stdio_startup_discovery_call_failure_and_shutdown_keep_stdout_protocol_only() -> None:
-    code = '''import asyncio
+async def test_stdio_startup_discovery_call_failure_and_shutdown_keep_stdout_protocol_only() -> (
+    None
+):
+    code = """import asyncio
 from coinmarketcap_keyless_mcp import runtime
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 class Fixture:
@@ -386,7 +401,7 @@ class Fixture:
  async def aclose(self):
   print("cleanup diagnostic", file=__import__("sys").stderr)
 asyncio.run(runtime.run_server("stdio", client_factory=Fixture))
-'''
+"""
     params = StdioServerParameters(command=sys.executable, args=["-c", code])
     async with asyncio.timeout(10):
         async with Client(stdio_client(params)) as client:
@@ -473,7 +488,9 @@ def test_application_source_has_no_stdout_print_calls() -> None:
         f"{path.name}:{node.lineno}"
         for path in runtime_sources
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
     ]
     assert calls == []
 
@@ -502,7 +519,13 @@ async def test_cleanup_that_never_finishes_is_abandoned_after_its_timeout(caplog
 
 @pytest.mark.parametrize(
     ("host", "loopback"),
-    [("127.0.0.1", True), ("::1", True), ("localhost", True), ("0.0.0.0", False), ("example.com", False)],
+    [
+        ("127.0.0.1", True),
+        ("::1", True),
+        ("localhost", True),
+        ("0.0.0.0", False),
+        ("example.com", False),
+    ],
 )
 def test_non_loopback_http_binding_is_detected(host: str, loopback: bool) -> None:
     from coinmarketcap_keyless_mcp import runtime

@@ -46,8 +46,22 @@ def test_error_classification(code, expected) -> None:
 
 @pytest.mark.parametrize("status_code", [401, 403, 404])
 def test_ordinary_http_policy_errors_require_more_evidence(status_code: int) -> None:
-    assert classify_error(CmcClientError(ErrorCode.UPSTREAM_HTTP_ERROR, str(status_code), status_code=status_code)) is CapabilityClassification.TRANSIENT_ERROR
-    assert classify_error(CmcClientError(ErrorCode.UPSTREAM_APPLICATION_ERROR, "route unavailable", details={"positive_unsupported": True})) is CapabilityClassification.UNSUPPORTED
+    assert (
+        classify_error(
+            CmcClientError(ErrorCode.UPSTREAM_HTTP_ERROR, str(status_code), status_code=status_code)
+        )
+        is CapabilityClassification.TRANSIENT_ERROR
+    )
+    assert (
+        classify_error(
+            CmcClientError(
+                ErrorCode.UPSTREAM_APPLICATION_ERROR,
+                "route unavailable",
+                details={"positive_unsupported": True},
+            )
+        )
+        is CapabilityClassification.UNSUPPORTED
+    )
 
 
 @pytest.mark.asyncio
@@ -67,7 +81,9 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         active -= 1
         return httpx.Response(200, json=_envelope({"ok": True}))
 
-    async with KeylessHttpClient(_transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1) as client:
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
+    ) as client:
         report = await verify_live(client_factory=lambda: client)
     assert len(report["routes"]) == 13
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
@@ -83,12 +99,23 @@ async def test_supported_shape_and_contract_mismatch_are_distinguished() -> None
         calls += 1
         return httpx.Response(200, json=_envelope({"ok": True}))
 
-    async with KeylessHttpClient(_transport=httpx.MockTransport(handler), cache_enabled=False) as client:
-        report = await verify_live(selected_tools={"cmc_global_metrics_latest"}, client_factory=lambda: client)
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_global_metrics_latest"}, client_factory=lambda: client
+        )
     assert report["routes"][0]["classification"] == "SUPPORTED"
 
-    async with KeylessHttpClient(_transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"status": {"error_code": 0}, "data": []})), cache_enabled=False) as client:
-        report = await verify_live(selected_tools={"cmc_global_metrics_latest"}, client_factory=lambda: client)
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"status": {"error_code": 0}, "data": []})
+        ),
+        cache_enabled=False,
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_global_metrics_latest"}, client_factory=lambda: client
+        )
     assert report["routes"][0]["classification"] == "CONTRACT_MISMATCH"
 
 
@@ -109,15 +136,24 @@ async def test_failure_classifications(response, expected) -> None:
             raise response
         return response
 
-    async with KeylessHttpClient(_transport=httpx.MockTransport(handler), cache_enabled=False, max_attempts=1) as client:
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False, max_attempts=1
+    ) as client:
         report = await verify_live(selected_tools={"cmc_crypto_map"}, client_factory=lambda: client)
     assert report["routes"][0]["classification"] == expected
 
 
 @pytest.mark.asyncio
 async def test_selected_route_rerun_and_evidence_omit_payload(tmp_path: Path) -> None:
-    async with KeylessHttpClient(_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=_envelope({"price": 123}))), cache_enabled=False) as client:
-        report = await verify_live(selected_tools={"cmc_crypto_info"}, client_factory=lambda: client)
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=_envelope({"price": 123}))
+        ),
+        cache_enabled=False,
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_info"}, client_factory=lambda: client
+        )
     path = write_evidence(report, tmp_path)
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert [route["tool"] for route in saved["routes"]] == ["cmc_crypto_info"]
@@ -125,7 +161,9 @@ async def test_selected_route_rerun_and_evidence_omit_payload(tmp_path: Path) ->
     assert "price" not in json.dumps(saved)
 
 
-@pytest.mark.parametrize(("classifications", "expected"), [(["SUPPORTED"], 0), (["SUPPORTED", "RATE_LIMITED"], 1)])
+@pytest.mark.parametrize(
+    ("classifications", "expected"), [(["SUPPORTED"], 0), (["SUPPORTED", "RATE_LIMITED"], 1)]
+)
 def test_main_exit_code_reflects_classifications(monkeypatch, tmp_path, classifications, expected):
     from coinmarketcap_keyless_mcp import verify_live as module
 

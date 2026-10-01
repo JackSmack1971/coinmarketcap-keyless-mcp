@@ -37,13 +37,13 @@ def _free_port() -> int:
 
 
 def _stdio_code() -> str:
-    return '''import asyncio
+    return """import asyncio
 from coinmarketcap_keyless_mcp import runtime
 class FixtureClient:
     async def get(self, route, params=None):
         return {"status": {"error_code": 0}, "data": {}}
 asyncio.run(runtime.run_server("stdio", client_factory=FixtureClient))
-'''
+"""
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,9 @@ async def test_streamable_http_tool_names_match_in_process() -> None:
         in_process = [tool.name for tool in (await client.list_tools()).tools]
 
     port = _free_port()
-    task = asyncio.create_task(run_server("streamable-http", port=port, client_factory=FixtureClient))
+    task = asyncio.create_task(
+        run_server("streamable-http", port=port, client_factory=FixtureClient)
+    )
     url = f"http://127.0.0.1:{port}/mcp"
     for _ in range(50):
         try:

@@ -16,6 +16,7 @@ class ProviderEnvelope(TypedDict):
     status: dict[str, Any]
     data: Any
 
+
 # Provider list parameters are comma-joined, so items must not contain separators.
 ListToken = Annotated[str, StringConstraints(pattern=r"^[^,\s]+$", min_length=1, max_length=64)]
 

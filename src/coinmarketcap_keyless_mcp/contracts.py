@@ -90,4 +90,6 @@ _CONTRACTS = (
 )
 
 TOOL_CONTRACTS: Final[tuple[ToolContract, ...]] = _CONTRACTS
-ROUTES: Final[Mapping[str, str]] = MappingProxyType({contract.name: contract.route for contract in _CONTRACTS})
+ROUTES: Final[Mapping[str, str]] = MappingProxyType(
+    {contract.name: contract.route for contract in _CONTRACTS}
+)

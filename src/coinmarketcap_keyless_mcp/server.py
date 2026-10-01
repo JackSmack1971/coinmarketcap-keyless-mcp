@@ -96,7 +96,12 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
             raise ValueError("listing_status contains an unsupported value")
         return await get(
             ROUTES["cmc_crypto_map"],
-            {"listing_status": ",".join(listing_status), "start": start, "limit": limit, "sort": sort},
+            {
+                "listing_status": ",".join(listing_status),
+                "start": start,
+                "limit": limit,
+                "sort": sort,
+            },
         )
 
     @server.tool(name="cmc_crypto_info", description=_description("cmc_crypto_info"))
@@ -108,9 +113,7 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     ) -> ProviderEnvelope:
         name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
         key, value = _query_selector(name, values)
-        return await get(
-            ROUTES["cmc_crypto_info"], {key: value, "skip_invalid": skip_invalid}
-        )
+        return await get(ROUTES["cmc_crypto_info"], {key: value, "skip_invalid": skip_invalid})
 
     @server.tool(name="cmc_quotes_latest", description=_description("cmc_quotes_latest"))
     async def cmc_quotes_latest(
@@ -139,10 +142,18 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         require_unique(convert, "convert")
         return await get(
             ROUTES["cmc_listings_latest"],
-            {"start": start, "limit": limit, "convert": ",".join(convert), "sort": sort, "sort_dir": sort_dir},
+            {
+                "start": start,
+                "limit": limit,
+                "convert": ",".join(convert),
+                "sort": sort,
+                "sort_dir": sort_dir,
+            },
         )
 
-    @server.tool(name="cmc_global_metrics_latest", description=_description("cmc_global_metrics_latest"))
+    @server.tool(
+        name="cmc_global_metrics_latest", description=_description("cmc_global_metrics_latest")
+    )
     async def cmc_global_metrics_latest(
         convert: UniqueConversions = Field(default=["USD"]),
     ) -> ProviderEnvelope:
@@ -153,17 +164,24 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     async def cmc_fear_greed_latest() -> ProviderEnvelope:
         return await get(ROUTES["cmc_fear_greed_latest"])
 
-    @server.tool(name="cmc_fear_greed_historical", description=_description("cmc_fear_greed_historical"))
+    @server.tool(
+        name="cmc_fear_greed_historical", description=_description("cmc_fear_greed_historical")
+    )
     async def cmc_fear_greed_historical(
         start: int = Field(default=1, ge=1), limit: int = Field(default=50, ge=1, le=500)
     ) -> ProviderEnvelope:
         return await get(ROUTES["cmc_fear_greed_historical"], {"start": start, "limit": limit})
 
-    @server.tool(name="cmc_altcoin_season_latest", description=_description("cmc_altcoin_season_latest"))
+    @server.tool(
+        name="cmc_altcoin_season_latest", description=_description("cmc_altcoin_season_latest")
+    )
     async def cmc_altcoin_season_latest() -> ProviderEnvelope:
         return await get(ROUTES["cmc_altcoin_season_latest"])
 
-    @server.tool(name="cmc_altcoin_season_historical", description=_description("cmc_altcoin_season_historical"))
+    @server.tool(
+        name="cmc_altcoin_season_historical",
+        description=_description("cmc_altcoin_season_historical"),
+    )
     async def cmc_altcoin_season_historical(timeframe: Timeframe = "7d") -> ProviderEnvelope:
         return await get(ROUTES["cmc_altcoin_season_historical"], {"timeframe": timeframe})
 
@@ -179,7 +197,8 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         interval: IndexInterval = "daily",
     ) -> ProviderEnvelope:
         return await get(
-            ROUTES["cmc_cmc100_historical"], _index_history_params(time_start, time_end, count, interval)
+            ROUTES["cmc_cmc100_historical"],
+            _index_history_params(time_start, time_end, count, interval),
         )
 
     @server.tool(name="cmc_cmc20_latest", description=_description("cmc_cmc20_latest"))
@@ -194,7 +213,8 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         interval: IndexInterval = "daily",
     ) -> ProviderEnvelope:
         return await get(
-            ROUTES["cmc_cmc20_historical"], _index_history_params(time_start, time_end, count, interval)
+            ROUTES["cmc_cmc20_historical"],
+            _index_history_params(time_start, time_end, count, interval),
         )
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The
@@ -222,7 +242,9 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     map_model.model_dump_one_level = dump_with_presence
     original_map_fn = map_tool.fn
 
-    async def map_with_presence(*, _provided_fields: frozenset[str] = frozenset(), **kwargs: Any) -> Any:
+    async def map_with_presence(
+        *, _provided_fields: frozenset[str] = frozenset(), **kwargs: Any
+    ) -> Any:
         symbols = kwargs.get("symbols")
         if symbols and any(
             field in _provided_fields for field in ("listing_status", "start", "limit", "sort")
