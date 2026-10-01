@@ -32,6 +32,8 @@ _MAX_ERROR_BODY_BYTES: Final = 4096
 # Bodies above this size are parsed off the event loop so one large payload
 # cannot stall other in-flight tool calls.
 _THREADED_PARSE_THRESHOLD_BYTES: Final = 64 * 1024
+# Explicit, version-independent bound: json.loads nesting limits differ by Python version.
+MAX_JSON_DEPTH: Final = 256
 
 Sleep = Callable[[float], Awaitable[None]]
 RandomUniform = Callable[[float, float], float]
@@ -474,6 +476,13 @@ class KeylessHttpClient:
                 attempts=attempts,
             ) from exc
 
+        if _json_depth_exceeds(payload, MAX_JSON_DEPTH):
+            raise CmcClientError(
+                ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
+                "CoinMarketCap response structure is too deeply nested",
+                status_code=response.status_code,
+                attempts=attempts,
+            )
         if not isinstance(payload, dict) or not isinstance(payload.get("status"), dict):
             raise CmcClientError(
                 ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
@@ -509,6 +518,22 @@ class KeylessHttpClient:
                 provider_error_code=error_code,
             )
         return payload
+
+
+def _json_depth_exceeds(value: Any, maximum: int) -> bool:
+    stack = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict):
+            children = node.values()
+        elif isinstance(node, list):
+            children = node
+        else:
+            continue
+        if depth > maximum:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

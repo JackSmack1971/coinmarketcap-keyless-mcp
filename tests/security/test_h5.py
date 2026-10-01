@@ -116,8 +116,9 @@ async def test_malformed_success_bodies_remain_contract_mismatches(body: bytes) 
 
 
 @pytest.mark.asyncio
-async def test_deep_json_is_contract_mismatch_then_valid_response_can_cache() -> None:
-    deep = b'{"status":{"error_code":0},"data":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}"
+@pytest.mark.parametrize("depth", [300, 2000])
+async def test_deep_json_is_contract_mismatch_then_valid_response_can_cache(depth: int) -> None:
+    deep = b'{"status":{"error_code":0},"data":' + b"[" * depth + b"0" + b"]" * depth + b"}"
     calls = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
