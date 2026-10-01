@@ -96,15 +96,16 @@ def _shape_check(data: Any, shape: str) -> str:
 
 
 def _positive_unsupported(error: CmcClientError) -> bool:
-    details = error.details
-    if isinstance(details, Mapping) and details.get("positive_unsupported") is True:
-        return True
     text = error.message.lower()
     return any(phrase in text for phrase in ("unsupported keyless", "route unavailable", "not available to keyless"))
 
 
 def classify_error(error: CmcClientError) -> CapabilityClassification:
-    """Map client failures without turning ordinary HTTP policy errors into unsupported."""
+    """Map client failures without turning ordinary HTTP policy errors into unsupported.
+
+    A deterministic 4xx stays TRANSIENT_ERROR (capability unknown): PLAN.md 13.1
+    requires a repeated run or explicit provider wording before UNSUPPORTED.
+    """
 
     if error.code is ErrorCode.RATE_LIMITED:
         return CapabilityClassification.RATE_LIMITED

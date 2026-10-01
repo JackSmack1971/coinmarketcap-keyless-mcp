@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import json
 import logging
@@ -11,6 +12,7 @@ import random
 import time
 import zlib
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from types import MappingProxyType
@@ -25,6 +27,11 @@ RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 502, 503, 504})
 DEFAULT_MAX_ATTEMPTS: Final = 3
 DEFAULT_BACKOFF_BASE_SECONDS: Final = 0.25
 DEFAULT_BACKOFF_MAX_SECONDS: Final = 2.0
+DEFAULT_REQUEST_DEADLINE_SECONDS: Final = 30.0
+_MAX_ERROR_BODY_BYTES: Final = 4096
+# Bodies above this size are parsed off the event loop so one large payload
+# cannot stall other in-flight tool calls.
+_THREADED_PARSE_THRESHOLD_BYTES: Final = 64 * 1024
 
 Sleep = Callable[[float], Awaitable[None]]
 RandomUniform = Callable[[float, float], float]
@@ -46,6 +53,24 @@ def _safe_provider_error_message(value: Any) -> str:
     if len(safe) > _MAX_PROVIDER_ERROR_MESSAGE_CHARS:
         safe = safe[: _MAX_PROVIDER_ERROR_MESSAGE_CHARS - 1] + "…"
     return safe
+
+def _http_error_detail(body: bytes) -> str | None:
+    """Extract a provider error message from a small 4xx body, if it has one."""
+
+    try:
+        payload = json.loads(body)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    status = payload.get("status")
+    message = status.get("error_message") if isinstance(status, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        message = payload.get("error_message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    return _safe_provider_error_message(message)
+
 
 CACHE_TTLS_BY_ROUTE: Final[Mapping[str, float]] = MappingProxyType(
     {
@@ -86,30 +111,28 @@ class _TtlCache:
     def __init__(self, now: Monotonic, max_entries: int = DEFAULT_CACHE_MAX_ENTRIES) -> None:
         self._now = now
         self._max_entries = max_entries
-        self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
-        self._lock = asyncio.Lock()
+        self._entries: dict[str, tuple[float, Any]] = {}
 
-    async def get(self, key: str) -> dict[str, Any] | None:
-        async with self._lock:
-            entry = self._entries.get(key)
-            if entry is None:
-                return None
-            expires_at, value = entry
-            if expires_at <= self._now():
-                self._entries.pop(key, None)
-                return None
-            self._entries[key] = self._entries.pop(key)
-            return copy.deepcopy(value)
-
-    async def set(self, key: str, value: dict[str, Any], ttl: float) -> None:
-        async with self._lock:
-            now = self._now()
+    # Neither method awaits, so each runs atomically on the event loop.
+    async def get(self, key: str) -> Any | None:
+        entry = self._entries.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if expires_at <= self._now():
             self._entries.pop(key, None)
-            for stale in [k for k, (expires_at, _) in self._entries.items() if expires_at <= now]:
-                del self._entries[stale]
-            while len(self._entries) >= self._max_entries:
-                del self._entries[next(iter(self._entries))]
-            self._entries[key] = (now + ttl, copy.deepcopy(value))
+            return None
+        self._entries[key] = self._entries.pop(key)
+        return copy.deepcopy(value)
+
+    async def set(self, key: str, value: Any, ttl: float) -> None:
+        now = self._now()
+        self._entries.pop(key, None)
+        for stale in [k for k, (expires_at, _) in self._entries.items() if expires_at <= now]:
+            del self._entries[stale]
+        while len(self._entries) >= self._max_entries:
+            del self._entries[next(iter(self._entries))]
+        self._entries[key] = (now + ttl, copy.deepcopy(value))
 
 
 def serialize_query(params: Mapping[str, Any] | None) -> dict[str, str]:
@@ -136,6 +159,15 @@ def _validate_positive(name: str, value: int) -> None:
 
 
 def _retry_after_seconds(value: str | None, maximum: float) -> float | None:
+    delay = _parse_retry_after(value)
+    if delay is None or delay > maximum:
+        return None
+    return delay
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a non-negative finite Retry-After delay, without applying a cap."""
+
     if value is None:
         return None
     try:
@@ -150,9 +182,15 @@ def _retry_after_seconds(value: str | None, maximum: float) -> float | None:
         if retry_at.tzinfo is None:
             retry_at = retry_at.replace(tzinfo=UTC)
         delay = (retry_at - datetime.now(UTC)).total_seconds()
-    if delay < 0 or delay > maximum:
+    if delay < 0:
         return None
     return delay
+
+
+@dataclass
+class _Inflight:
+    task: asyncio.Task[tuple[dict[str, Any], bytes, int, int]]
+    waiters: int = 0
 
 
 class KeylessHttpClient:
@@ -169,6 +207,7 @@ class KeylessHttpClient:
         cache_ttl_overrides: Mapping[str, float] | None = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        request_deadline_seconds: float = DEFAULT_REQUEST_DEADLINE_SECONDS,
         _transport: httpx.AsyncBaseTransport | None = None,
         _sleep: Sleep = asyncio.sleep,
         _random_uniform: RandomUniform = random.uniform,
@@ -180,6 +219,8 @@ class KeylessHttpClient:
             raise ValueError("backoff values must be non-negative")
         _validate_positive("max_concurrency", max_concurrency)
         _validate_positive("max_response_bytes", max_response_bytes)
+        if not math.isfinite(request_deadline_seconds) or request_deadline_seconds <= 0:
+            raise ValueError("request_deadline_seconds must be finite and greater than zero")
         ttl_overrides = dict(cache_ttl_overrides or {})
         if any(route not in ROUTES.values() for route in ttl_overrides):
             raise ValueError("cache_ttl_overrides contains a non-allowlisted route")
@@ -201,8 +242,12 @@ class KeylessHttpClient:
         self._cache = _TtlCache(_monotonic) if cache_enabled else None
         self._concurrency = asyncio.Semaphore(max_concurrency)
         self._max_response_bytes = max_response_bytes
-        self._last_attempts = 0
-        self._last_status_code: int | None = None
+        self._request_deadline_seconds = request_deadline_seconds
+        self._inflight: dict[str, _Inflight] = {}
+        # Per-task call metadata, so concurrent calls cannot overwrite each other's.
+        self._last_call: contextvars.ContextVar[tuple[int, int | None]] = contextvars.ContextVar(
+            f"cmc_last_call_{id(self)}", default=(0, None)
+        )
         self._http = httpx.AsyncClient(
             base_url=BASE_URL,
             headers={"Accept": "application/json", "Accept-Encoding": "gzip, deflate"},
@@ -216,7 +261,17 @@ class KeylessHttpClient:
     async def __aexit__(self, *_: object) -> None:
         await self.aclose()
 
+    @property
+    def _last_attempts(self) -> int:
+        return self._last_call.get()[0]
+
+    @property
+    def _last_status_code(self) -> int | None:
+        return self._last_call.get()[1]
+
     async def aclose(self) -> None:
+        for entry in list(self._inflight.values()):
+            entry.task.cancel()
         await self._http.aclose()
 
     async def get(self, route: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -228,22 +283,57 @@ class KeylessHttpClient:
         query = serialize_query(params)
         key = cache_key(route, query)
         ttl = self._cache_ttls[route]
-        if self._cache is not None and ttl > 0:
-            cached = await self._cache.get(key)
-            if cached is not None:
-                logger.debug("cache hit route=%s", route)
-                return cached
-            logger.debug("cache miss route=%s", route)
+        if self._cache is None or ttl <= 0:
+            result, _, status_code, attempts = await self._fetch(route, query, key, ttl)
+            self._last_call.set((attempts, status_code))
+            return result
 
+        cached = await self._cache.get(key)
+        if cached is not None:
+            logger.debug("cache hit route=%s", route)
+            return await self._parse(cached, 200, 0)
+        logger.debug("cache miss route=%s", route)
+
+        # Identical concurrent cold requests share one upstream fetch, which is
+        # cancelled only once every caller waiting on it has been cancelled.
+        entry = self._inflight.get(key)
+        leader = entry is None
+        if entry is None:
+            entry = _Inflight(asyncio.create_task(self._fetch(route, query, key, ttl)))
+            self._inflight[key] = entry
+            entry.task.add_done_callback(lambda done: self._finish_inflight(key, done))
+        entry.waiters += 1
+        try:
+            result, body, status_code, attempts = await asyncio.shield(entry.task)
+        finally:
+            entry.waiters -= 1
+            if entry.waiters == 0 and not entry.task.done():
+                entry.task.cancel()
+                await asyncio.wait({entry.task})
+        self._last_call.set((attempts, status_code))
+        return result if leader else await self._parse(body, status_code, attempts)
+
+    def _finish_inflight(self, key: str, task: asyncio.Task[Any]) -> None:
+        entry = self._inflight.get(key)
+        if entry is not None and entry.task is task:
+            del self._inflight[key]
+        if not task.cancelled():
+            task.exception()  # Mark retrieved even when every waiter was cancelled.
+
+    async def _fetch(
+        self, route: str, query: dict[str, str], key: str, ttl: float
+    ) -> tuple[dict[str, Any], bytes, int, int]:
         for attempt in range(1, self._max_attempts + 1):
-            self._last_attempts = attempt
             try:
-                async with self._concurrency:
+                async with self._concurrency, asyncio.timeout(self._request_deadline_seconds):
                     async with self._http.stream("GET", route, params=query) as streamed:
-                        # HTTP errors are classified from headers alone. Do not
-                        # consume an error body or hold capacity during backoff.
+                        # Retryable errors are classified from headers alone, so
+                        # capacity is never held while reading them or backing off.
                         response = streamed
-                        if streamed.status_code < 400:
+                        error_detail: str | None = None
+                        if 400 <= streamed.status_code < 500 and streamed.status_code != 429:
+                            error_detail = await self._read_error_detail(streamed)
+                        elif streamed.status_code < 400:
                             body = bytearray()
                             declared = streamed.headers.get("Content-Length")
                             if declared is not None and declared.isdecimal():
@@ -272,7 +362,7 @@ class KeylessHttpClient:
                             response = httpx.Response(
                                 streamed.status_code, content=bytes(body), request=streamed.request
                             )
-            except httpx.TimeoutException as exc:
+            except (httpx.TimeoutException, TimeoutError) as exc:
                 if attempt < self._max_attempts:
                     await self._backoff(attempt)
                     continue
@@ -291,10 +381,12 @@ class KeylessHttpClient:
                     attempts=attempt,
                 ) from exc
 
-            if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._max_attempts:
-                await self._retry_delay(response, attempt)
+            if (
+                response.status_code in RETRYABLE_STATUS_CODES
+                and attempt < self._max_attempts
+                and await self._retry_delay(response, attempt)
+            ):
                 continue
-            self._last_status_code = response.status_code
             if response.status_code == 429:
                 raise CmcClientError(
                     ErrorCode.RATE_LIMITED,
@@ -310,24 +402,19 @@ class KeylessHttpClient:
                     attempts=attempt,
                 )
             if response.status_code >= 400:
+                message = f"CoinMarketCap returned HTTP {response.status_code}"
                 raise CmcClientError(
                     ErrorCode.UPSTREAM_HTTP_ERROR,
-                    f"CoinMarketCap returned HTTP {response.status_code}",
+                    f"{message}: {error_detail}" if error_detail else message,
                     status_code=response.status_code,
                     attempts=attempt,
                 )
-            result = self._parse_envelope(response, attempt)
-            try:
-                if self._cache is not None and ttl > 0:
-                    await self._cache.set(key, result, ttl)
-                return copy.deepcopy(result)
-            except RecursionError as exc:
-                raise CmcClientError(
-                    ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
-                    "CoinMarketCap response structure is too deeply nested",
-                    status_code=response.status_code,
-                    attempts=attempt,
-                ) from exc
+            result = await self._parse(response.content, response.status_code, attempt)
+            if self._cache is not None and ttl > 0:
+                # Cache the validated bytes: immutable, and a hit re-parses
+                # instead of deep-copying a large object graph.
+                await self._cache.set(key, response.content, ttl)
+            return result, response.content, response.status_code, attempt
 
         raise AssertionError("retry loop exhausted without a result")
 
@@ -340,15 +427,35 @@ class KeylessHttpClient:
             attempts=attempt,
         )
 
-    async def _retry_delay(self, response: httpx.Response, attempt: int) -> None:
-        retry_after = _retry_after_seconds(
-            response.headers.get("Retry-After"), self._backoff_max_seconds
-        )
+    async def _retry_delay(self, response: httpx.Response, attempt: int) -> bool:
+        """Sleep before a retry, or return False when the provider asks for longer."""
+
+        retry_after = _parse_retry_after(response.headers.get("Retry-After"))
         if retry_after is not None:
+            if retry_after > self._backoff_max_seconds:
+                # Retrying sooner than the provider asked only burns the limit.
+                return False
             await self._sleep(retry_after)
-            return
-        ceiling = min(self._backoff_max_seconds, self._backoff_base_seconds * (2 ** (attempt - 1)))
-        await self._sleep(self._random_uniform(0.0, ceiling))
+            return True
+        await self._backoff(attempt)
+        return True
+
+    async def _read_error_detail(self, response: httpx.Response) -> str | None:
+        body = bytearray()
+        try:
+            async for chunk in _bounded_decoded_chunks(response, _MAX_ERROR_BODY_BYTES):
+                body.extend(chunk)
+                if len(body) > _MAX_ERROR_BODY_BYTES:
+                    return None
+        except (zlib.error, CmcClientError):
+            return None
+        return _http_error_detail(bytes(body))
+
+    async def _parse(self, body: bytes, status_code: int, attempts: int) -> dict[str, Any]:
+        response = httpx.Response(status_code, content=body)
+        if len(body) > _THREADED_PARSE_THRESHOLD_BYTES:
+            return await asyncio.to_thread(self._parse_envelope, response, attempts)
+        return self._parse_envelope(response, attempts)
 
     async def _backoff(self, attempt: int) -> None:
         ceiling = min(self._backoff_max_seconds, self._backoff_base_seconds * (2 ** (attempt - 1)))
@@ -426,34 +533,56 @@ async def _bounded_decoded_chunks(
         async for chunk in response.aiter_raw():
             yield chunk[: maximum + 1]
         return
-    if encoding == "gzip":
-        decoder = zlib.decompressobj(zlib.MAX_WBITS | 16)
-    elif encoding == "deflate":
-        decoder = zlib.decompressobj()
-    else:
+    if encoding not in {"gzip", "deflate"}:
         raise CmcClientError(
             ErrorCode.UPSTREAM_CONTRACT_MISMATCH,
             "CoinMarketCap response uses an unsupported content encoding",
             status_code=response.status_code,
         )
+    decoder: Any = None
+    header = b""
     produced = 0
     async for raw_chunk in response.aiter_raw():
-        remaining = maximum + 1 - produced
-        decoded = decoder.decompress(raw_chunk, remaining)
-        produced += len(decoded)
-        if decoded:
-            yield decoded
-        if produced > maximum:
-            return
-        while decoder.unconsumed_tail:
-            remaining = maximum + 1 - produced
-            decoded = decoder.decompress(decoder.unconsumed_tail, remaining)
+        pending = raw_chunk
+        if decoder is None:
+            header += pending
+            if encoding == "deflate" and len(header) < 2:
+                continue
+            decoder = zlib.decompressobj(_wbits(encoding, header))
+            pending = header
+        while pending and produced <= maximum:
+            decoded = decoder.decompress(pending, maximum + 1 - produced)
             produced += len(decoded)
             if decoded:
                 yield decoded
-            if produced > maximum:
-                return
-    remaining = maximum + 1 - produced
-    tail = decoder.flush(remaining)
+            if decoder.eof:
+                pending = decoder.unused_data
+                if not pending or encoding != "gzip":
+                    break
+                # Multi-member gzip: each member is a complete stream.
+                decoder = zlib.decompressobj(zlib.MAX_WBITS | 16)
+            else:
+                pending = decoder.unconsumed_tail
+        if produced > maximum:
+            return
+    if decoder is None:
+        if header:
+            decoder = zlib.decompressobj(_wbits(encoding, header))
+            decoded = decoder.decompress(header, maximum + 1)
+            if decoded:
+                yield decoded
+        else:
+            return
+    tail = decoder.flush(maximum + 1 - produced)
     if tail:
         yield tail
+
+
+def _wbits(encoding: str, header: bytes) -> int:
+    if encoding == "gzip":
+        return zlib.MAX_WBITS | 16
+    # Content-Encoding: deflate is meant to be zlib-wrapped, but some servers
+    # send raw deflate. A zlib header is CM=8 with a check value divisible by 31.
+    if len(header) >= 2 and header[0] & 0x0F == 8 and (header[0] << 8 | header[1]) % 31 == 0:
+        return zlib.MAX_WBITS
+    return -zlib.MAX_WBITS

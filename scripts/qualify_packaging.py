@@ -126,8 +126,16 @@ def inspect_artifacts(artifacts: Path, version: str) -> tuple[Path, Path, list[s
     return wheel, sdist, wheel_metadata.get_all("Requires-Dist", [])
 
 
+def venv_bin(venv: Path) -> Path:
+    return venv / ("Scripts" if os.name == "nt" else "bin")
+
+
+def venv_python(venv: Path) -> Path:
+    return venv_bin(venv) / ("python.exe" if os.name == "nt" else "python")
+
+
 def console_path(venv: Path) -> Path:
-    candidates = [venv / "Scripts" / f"{CONSOLE}.exe", venv / "Scripts" / CONSOLE]
+    candidates = [venv_bin(venv) / f"{CONSOLE}.exe", venv_bin(venv) / CONSOLE]
     found = next((path for path in candidates if path.exists()), None)
     assert found is not None, candidates
     return found
@@ -136,7 +144,7 @@ def console_path(venv: Path) -> Path:
 def qualify_artifact(uv: str, artifact: Path, artifact_label: str, python: str, parent: Path) -> None:
     venv = parent / f"{artifact_label}-py{python.replace('.', '')}"
     run([uv, "venv", "--seed", "--python", python, str(venv)], cwd=parent)
-    python_exe = venv / "Scripts" / "python.exe"
+    python_exe = venv_python(venv)
     install_env = os.environ.copy()
     install_env["UV_PYTHON"] = python
     install_env.pop("PYTHONPATH", None)
@@ -162,7 +170,7 @@ def qualify_artifact(uv: str, artifact: Path, artifact_label: str, python: str, 
 def qualify_http(uv: str, wheel: Path, parent: Path, python: str) -> None:
     venv = parent / f"wheel-http-py{python.replace('.', '')}"
     run([uv, "venv", "--seed", "--python", python, str(venv)], cwd=parent)
-    python_exe = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python_exe = venv_python(venv)
     install_env = os.environ.copy()
     install_env["UV_PYTHON"] = python
     run([uv, "pip", "install", "--python", str(python_exe), str(wheel)], cwd=parent, env=install_env)

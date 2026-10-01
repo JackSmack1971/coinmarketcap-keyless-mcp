@@ -583,3 +583,105 @@ async def test_timeout_is_bounded_and_classified() -> None:
 
 async def _immediate() -> None:
     return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (b'{"status":{"error_code":400,"error_message":"Invalid value for \\"id\\": \\"x\\""}}',
+         'CoinMarketCap returned HTTP 400: Invalid value for "id": "x"'),
+        (b'{"error_message":"bad\\r\\ninput"}', "CoinMarketCap returned HTTP 400: bad input"),
+        (b"<html>not json</html>", "CoinMarketCap returned HTTP 400"),
+        (b'{"status":{"error_message":"' + b"x" * 5000 + b'"}}', "CoinMarketCap returned HTTP 400"),
+    ],
+)
+async def test_non_retryable_4xx_surfaces_a_bounded_provider_reason(body: bytes, expected: str) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(400, content=body)
+
+    with pytest.raises(CmcClientError) as caught:
+        await run_client(handler)
+    assert caught.value.code is ErrorCode.UPSTREAM_HTTP_ERROR
+    assert caught.value.message == expected
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_drip_body_hits_the_wall_clock_deadline() -> None:
+    class Drip(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            while True:
+                await asyncio.sleep(0.01)
+                yield b" "
+
+    with pytest.raises(CmcClientError) as caught:
+        await run_client(
+            lambda request: httpx.Response(200, stream=Drip()),
+            request_deadline_seconds=0.05,
+            max_attempts=2,
+            _sleep=lambda delay: asyncio.sleep(0),
+        )
+    assert caught.value.code is ErrorCode.UPSTREAM_TIMEOUT
+    assert caught.value.attempts == 2
+
+
+def test_request_deadline_must_be_positive_and_finite() -> None:
+    for value in (0, -1, float("inf"), float("nan")):
+        with pytest.raises(ValueError):
+            KeylessHttpClient(request_deadline_seconds=value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("variant", ["zlib", "raw", "multi-gzip"])
+async def test_deflate_variants_and_multi_member_gzip_decode(variant: str) -> None:
+    import gzip
+    import json
+    import zlib
+
+    payload = {"status": {"error_code": 0}, "data": {"items": list(range(50))}}
+    raw = json.dumps(payload).encode()
+    if variant == "zlib":
+        body, encoding = zlib.compress(raw), "deflate"
+    elif variant == "raw":
+        compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        body, encoding = compressor.compress(raw) + compressor.flush(), "deflate"
+    else:
+        body, encoding = gzip.compress(raw[:20]) + gzip.compress(raw[20:]), "gzip"
+
+    class Chunks(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for index in range(0, len(body), 7):  # Split headers and members across chunks.
+                yield body[index : index + 7]
+
+    result = await run_client(
+        lambda request: httpx.Response(200, stream=Chunks(), headers={"Content-Encoding": encoding})
+    )
+    assert result == payload
+
+
+@pytest.mark.asyncio
+async def test_call_metadata_is_isolated_per_concurrent_call() -> None:
+    first_seen = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["id"] == "slow" and not first_seen.is_set():
+            first_seen.set()
+            return httpx.Response(503)
+        await first_seen.wait()
+        return response({"status": {"error_code": 0}, "data": {}})
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False, _sleep=lambda d: asyncio.sleep(0)
+    ) as client:
+        route = ROUTES["cmc_quotes_latest"]
+
+        async def call(ident: str) -> tuple[int, int | None]:
+            await client.get(route, {"id": ident})
+            return client._last_attempts, client._last_status_code
+
+        assert await asyncio.gather(call("slow"), call("fast")) == [(2, 200), (1, 200)]

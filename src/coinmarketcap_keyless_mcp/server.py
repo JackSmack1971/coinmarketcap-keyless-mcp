@@ -41,6 +41,25 @@ def _query_selector(name: str, values: list[Any]) -> tuple[str, str]:
     )
 
 
+def _index_history_params(
+    time_start: str, time_end: str, count: int, interval: IndexInterval
+) -> dict[str, Any]:
+    """Shared validation and query for the CMC100/CMC20 history tools.
+
+    An omitted bound arrives as "" (the schema forbids an explicit empty string),
+    which keeps the published schema a plain string as PLAN.md specifies.
+    """
+
+    start, end = time_start or None, time_end or None
+    validate_time_bounds(start, end)
+    params: dict[str, Any] = {"count": count, "interval": interval}
+    if start is not None:
+        params["time_start"] = start
+    if end is not None:
+        params["time_end"] = end
+    return params
+
+
 def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     """Create the high-level MCP server with the exact 13-tool contract."""
 
@@ -159,15 +178,9 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         count: int = Field(default=5, ge=1, le=10),
         interval: IndexInterval = "daily",
     ) -> ProviderEnvelope:
-        time_start = time_start or None
-        time_end = time_end or None
-        validate_time_bounds(time_start, time_end)
-        params: dict[str, Any] = {"count": count, "interval": interval}
-        if time_start is not None:
-            params["time_start"] = time_start
-        if time_end is not None:
-            params["time_end"] = time_end
-        return await get(ROUTES["cmc_cmc100_historical"], params)
+        return await get(
+            ROUTES["cmc_cmc100_historical"], _index_history_params(time_start, time_end, count, interval)
+        )
 
     @server.tool(name="cmc_cmc20_latest", description=_description("cmc_cmc20_latest"))
     async def cmc_cmc20_latest() -> ProviderEnvelope:
@@ -180,15 +193,9 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         count: int = Field(default=5, ge=1, le=10),
         interval: IndexInterval = "daily",
     ) -> ProviderEnvelope:
-        time_start = time_start or None
-        time_end = time_end or None
-        validate_time_bounds(time_start, time_end)
-        params: dict[str, Any] = {"count": count, "interval": interval}
-        if time_start is not None:
-            params["time_start"] = time_start
-        if time_end is not None:
-            params["time_end"] = time_end
-        return await get(ROUTES["cmc_cmc20_historical"], params)
+        return await get(
+            ROUTES["cmc_cmc20_historical"], _index_history_params(time_start, time_end, count, interval)
+        )
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The
     # Phase 2 contract requires strict rejection, so tighten each registered

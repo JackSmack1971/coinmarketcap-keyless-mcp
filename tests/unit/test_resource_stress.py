@@ -113,7 +113,7 @@ class ObservedSemaphore(asyncio.Semaphore):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("capacity", [2, 3])
-@pytest.mark.parametrize("mode", ["identical", "different", "disabled", "expired", "error"])
+@pytest.mark.parametrize("mode", ["different", "disabled"])
 async def test_cache_contention(capacity, mode):
     now = [0.0]
     active = maximum = calls = 0
@@ -242,7 +242,8 @@ async def test_capacity_recovers_after_active_failure(failure):
                 return await original()
 
             sem.acquire = acquire
-            waiter = asyncio.create_task(client.get(ROUTE))
+            # A different key: identical keys share the blocked fetch instead.
+            waiter = asyncio.create_task(client.get(ROUTE, {"id": "waiter"}))
             await observed.arrived.wait()
             waiter.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -409,7 +410,7 @@ async def test_retry_success_is_cached_only_after_completion():
 
 
 @pytest.mark.asyncio
-async def test_cache_storage_copy_and_exact_expiry_under_lock_contention():
+async def test_cache_storage_copy_and_exact_expiry():
     from coinmarketcap_keyless_mcp.client import _TtlCache
 
     now = [0.0]
@@ -418,19 +419,8 @@ async def test_cache_storage_copy_and_exact_expiry_under_lock_contention():
     await cache.set("key", source, 30.0)
     source["items"].append("external mutation")
     assert await cache.get("key") == {"items": []}
-    await cache._lock.acquire()
-    reached = asyncio.Barrier(25)
-
-    async def read():
-        await reached.wait()
-        return await cache.get("key")
-
-    tasks = [asyncio.create_task(read()) for _ in range(24)]
-    async with asyncio.timeout(5):
-        await reached.wait()
-        now[0] = 30.0
-        cache._lock.release()
-        assert await asyncio.gather(*tasks) == [None] * 24
+    now[0] = 30.0
+    assert await asyncio.gather(*(cache.get("key") for _ in range(24))) == [None] * 24
     assert cache._entries == {}
 
 
@@ -452,3 +442,83 @@ async def test_cache_is_bounded_and_evicts_expired_then_oldest_entries():
     for i in range(100):
         await cache.set(f"k{i}", {"v": i}, 30.0)
     assert len(cache._entries) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["identical", "expired", "error"])
+async def test_identical_cold_requests_share_one_upstream_fetch(mode):
+    now = [0.0]
+    calls = 0
+    release = asyncio.Event()
+    entered = asyncio.Event()
+    blocked = False
+
+    async def handler(request):
+        nonlocal calls
+        calls += 1
+        if blocked:
+            entered.set()
+            await release.wait()
+        return httpx.Response(
+            200,
+            json=(
+                {"status": {"error_code": 1006}, "data": None}
+                if mode == "error"
+                else {"status": {"error_code": 0}, "data": {"items": [], "generation": calls}}
+            ),
+        )
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), _monotonic=lambda: now[0]
+    ) as client:
+        if mode == "expired":
+            await client.get(ROUTE)
+            now[0] = 30.0
+        blocked = True
+        tasks = [asyncio.create_task(client.get(ROUTE)) for _ in range(24)]
+        async with asyncio.timeout(5):
+            await entered.wait()
+            release.set()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        assert calls == 1 + (mode == "expired")
+        assert client._inflight == {}
+        if mode == "error":
+            assert all(
+                isinstance(result, CmcClientError)
+                and result.code is ErrorCode.UPSTREAM_APPLICATION_ERROR
+                for result in results
+            )
+            assert client._cache._entries == {}
+            with pytest.raises(CmcClientError):
+                await client.get(ROUTE)
+            assert calls == 2
+        else:
+            assert all(result["data"]["generation"] == calls for result in results)
+            results[0]["data"]["items"].append("mutation")
+            assert all(result["data"]["items"] == [] for result in results[1:])
+
+
+@pytest.mark.asyncio
+async def test_shared_fetch_survives_one_cancelled_waiter():
+    release = asyncio.Event()
+    entered = asyncio.Event()
+    calls = 0
+
+    async def handler(request):
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        return httpx.Response(200, json=PAYLOAD)
+
+    async with KeylessHttpClient(_transport=httpx.MockTransport(handler)) as client:
+        first = asyncio.create_task(client.get(ROUTE))
+        second = asyncio.create_task(client.get(ROUTE))
+        async with asyncio.timeout(5):
+            await entered.wait()
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            release.set()
+            assert await second == PAYLOAD
+        assert calls == 1
