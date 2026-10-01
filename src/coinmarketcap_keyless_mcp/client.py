@@ -79,9 +79,13 @@ def cache_key(route: str, params: Mapping[str, Any] | None = None) -> str:
     )
 
 
+DEFAULT_CACHE_MAX_ENTRIES = 64
+
+
 class _TtlCache:
-    def __init__(self, now: Monotonic) -> None:
+    def __init__(self, now: Monotonic, max_entries: int = DEFAULT_CACHE_MAX_ENTRIES) -> None:
         self._now = now
+        self._max_entries = max_entries
         self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
@@ -94,11 +98,18 @@ class _TtlCache:
             if expires_at <= self._now():
                 self._entries.pop(key, None)
                 return None
+            self._entries[key] = self._entries.pop(key)
             return copy.deepcopy(value)
 
     async def set(self, key: str, value: dict[str, Any], ttl: float) -> None:
         async with self._lock:
-            self._entries[key] = (self._now() + ttl, copy.deepcopy(value))
+            now = self._now()
+            self._entries.pop(key, None)
+            for stale in [k for k, (expires_at, _) in self._entries.items() if expires_at <= now]:
+                del self._entries[stale]
+            while len(self._entries) >= self._max_entries:
+                del self._entries[next(iter(self._entries))]
+            self._entries[key] = (now + ttl, copy.deepcopy(value))
 
 
 def serialize_query(params: Mapping[str, Any] | None) -> dict[str, str]:

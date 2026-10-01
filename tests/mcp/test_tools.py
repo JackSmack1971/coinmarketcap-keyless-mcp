@@ -104,3 +104,21 @@ async def test_unknown_arguments_and_cross_field_errors_are_rejected_before_upst
     assert selectors.is_error
     assert invalid_time.is_error
     assert recording.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("cmc_quotes_latest", {"ids": [1], "convert": ["USD,EUR,GBP,JPY"]}),
+        ("cmc_crypto_map", {"symbols": ["BTC,BTC"]}),
+        ("cmc_crypto_info", {"symbols": ["BTC ETH"]}),
+        ("cmc_quotes_latest", {"symbols": ["X" * 65]}),
+    ],
+)
+async def test_list_items_cannot_smuggle_separators_past_bounds(tool: str, arguments: dict[str, Any]) -> None:
+    recording = RecordingClient()
+    async with Client(create_server(recording)) as client:
+        result = await client.call_tool(tool, arguments)
+    assert result.is_error
+    assert recording.calls == []

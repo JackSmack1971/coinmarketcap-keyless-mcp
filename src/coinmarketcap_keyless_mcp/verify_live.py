@@ -189,15 +189,17 @@ async def _main_async(args: argparse.Namespace) -> int:
         counts[route["classification"]] = counts.get(route["classification"], 0) + 1
     print(f"Evidence written to {path}")
     print("Classification summary: " + ", ".join(f"{key}={counts[key]}" for key in sorted(counts)))
-    return 0
+    return 0 if set(counts) <= {CapabilityClassification.SUPPORTED.value} else 1
 
 
 def main(argv: list[str] | None = None) -> None:
     try:
-        asyncio.run(_main_async(build_parser().parse_args(argv)))
+        status = asyncio.run(_main_async(build_parser().parse_args(argv)))
     except (OSError, ValueError) as exc:
         print(f"live verification failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    if status:
+        raise SystemExit(status)
 
 
 if __name__ == "__main__":

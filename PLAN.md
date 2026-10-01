@@ -300,7 +300,7 @@ General rules:
     "sort": {"enum": ["id", "cmc_rank"], "default": "id"},
     "symbols": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 100,
       "uniqueItems": true
@@ -345,7 +345,7 @@ Serialization:
     },
     "symbols": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 100,
       "uniqueItems": true
@@ -395,14 +395,14 @@ The initial MCP tool intentionally does not expose contract-address lookup or `a
     },
     "symbols": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 100,
       "uniqueItems": true
     },
     "convert": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 3,
       "uniqueItems": true,
@@ -440,7 +440,7 @@ Serialization:
     "limit": {"type": "integer", "minimum": 1, "maximum": 250, "default": 100},
     "convert": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 3,
       "uniqueItems": true,
@@ -490,7 +490,7 @@ The initial MCP tool intentionally omits provider threshold filters, `tag`, `cry
   "properties": {
     "convert": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^,\\s]+$"},
       "minItems": 1,
       "maxItems": 3,
       "uniqueItems": true,
