@@ -95,11 +95,9 @@ def _is_info_entry(value: Any) -> bool:
     return _is_asset(value) or _nonempty_list_of(value, _is_asset)
 
 
-def _is_fear_greed_point(value: Any) -> bool:
-    return isinstance(value, Mapping) and _is_number(value.get("value"))
+def _is_valued_point(value: Any) -> bool:
+    """A mapping whose headline "value" is a finite number (fear/greed and index points)."""
 
-
-def _is_index_point(value: Any) -> bool:
     return isinstance(value, Mapping) and _is_number(value.get("value"))
 
 
@@ -149,13 +147,11 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
         ),
     ),
     "fear_greed_latest": (
-        lambda data: (
-            _is_fear_greed_point(data) and isinstance(data.get("value_classification"), str)
-        ),
+        lambda data: _is_valued_point(data) and isinstance(data.get("value_classification"), str),
         lambda data: "fear and greed value and classification present",
     ),
     "fear_greed_history": (
-        lambda data: _nonempty_list_of(data, _is_fear_greed_point),
+        lambda data: _nonempty_list_of(data, _is_valued_point),
         lambda data: "fear and greed history with values; result count=%d" % len(data),
     ),
     "altcoin_season_latest": (
@@ -173,14 +169,14 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
     ),
     "index_latest": (
         lambda data: (
-            _is_index_point(data) and _nonempty_list_of(data.get("constituents"), _is_asset)
+            _is_valued_point(data) and _nonempty_list_of(data.get("constituents"), _is_asset)
         ),
         lambda data: (
             "index value with constituents; constituent count=%d" % len(data["constituents"])
         ),
     ),
     "index_history": (
-        lambda data: _nonempty_list_of(_index_history_points(data), _is_index_point),
+        lambda data: _nonempty_list_of(_index_history_points(data), _is_valued_point),
         lambda data: (
             "index history with values; result count=%d" % len(_index_history_points(data))
         ),
