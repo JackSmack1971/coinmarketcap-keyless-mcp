@@ -93,6 +93,13 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
         {"platform": "Ethereum", "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
         "dex_holders_count",
     ),
+    # E2-E contract review: tool arguments platform/address (the D3/D4/D16 identity), sent as
+    # the provider query keys platformName and address, as models.dex_security_detail_params does.
+    LiveProbe(
+        "cmc_dex_security_detail",
+        {"platformName": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        "dex_security_detail",
+    ),
 )
 
 
@@ -145,6 +152,10 @@ def _is_positive_int(value: Any) -> bool:
 
 def _is_nonnegative_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_mapping_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, Mapping) for item in value)
 
 
 def _is_priced(value: Any) -> bool:
@@ -333,6 +344,12 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
     "dex_holders_count": (
         lambda data: isinstance(data, Mapping) and _is_nonnegative_int(data.get("count")),
         lambda data: "DEX holder count",
+    ),
+    # Documentation-derived minimum: a list (empty allowed) of mappings; no DTO field is
+    # required and nothing is compared with the request (third-party vendor data).
+    "dex_security_detail": (
+        _is_mapping_list,
+        lambda data: "DEX security detail records",
     ),
 }
 

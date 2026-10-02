@@ -9,10 +9,15 @@ import pytest
 from coinmarketcap_keyless_mcp.client import KeylessHttpClient
 from coinmarketcap_keyless_mcp.contracts import BASE_URL, ROUTES
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
-from coinmarketcap_keyless_mcp.models import dex_holders_count_params, dex_platform_detail_params
+from coinmarketcap_keyless_mcp.models import (
+    dex_holders_count_params,
+    dex_platform_detail_params,
+    dex_security_detail_params,
+)
 from coinmarketcap_keyless_mcp.verify_live import (
     LIVE_MATRIX,
     CapabilityClassification,
+    _is_mapping_list,
     _is_nonnegative_int,
     _shape_check,
     classify_error,
@@ -67,6 +72,8 @@ VALID_DATA = {
     "cmc_dex_platform_detail": {"id": 1, "n": "ethereum"},
     # Non-negative int count only; tokenAddress and platformId are optional.
     "cmc_dex_holders_count": {"count": 0},
+    # A list (empty allowed) of mappings; no TokenSecurityResponseDTO field is required.
+    "cmc_dex_security_detail": [],
 }
 
 UNRELATED = {"ok": True}
@@ -207,6 +214,19 @@ INVALID_DATA = {
         {"id": 1, "n": ["Ethereum"]},
         {"id": 1, "pltA": "ETH"},
     ],
+    "cmc_dex_security_detail": [
+        {},
+        {"platformName": "ethereum", "securityLevel": 1},
+        None,
+        "[]",
+        0,
+        [1],
+        [None],
+        [[]],
+        ["record"],
+        [{}, 1],
+        [{"exist": True}, None],
+    ],
     "cmc_dex_holders_count": [
         {},
         [],
@@ -332,7 +352,7 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 23
+    assert len(report["routes"]) == 24
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -721,3 +741,79 @@ def test_e2d_shape_accepts_zero_and_positive_count_without_optional_fields(count
 )
 def test_is_nonnegative_int_is_exact(value, expected: bool) -> None:
     assert _is_nonnegative_int(value) is expected
+
+
+USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+
+D8_FULL_RECORD = {
+    "platformName": "ethereum",
+    "platformId": 1,
+    "tokenContractAddress": USDC.lower(),
+    "securityLevel": 1,
+    "categoryLevel": 0,
+    "securityBatchLevel": 0,
+    "extra": {
+        "buyTax": "0",
+        "sellTax": "0.05",
+        "isFlaggedByVendor": False,
+        "isVerified": True,
+        "isReported": False,
+        "source": "GoPlus",
+    },
+    "securityItems": [
+        {"code": "C1", "riskCode": "R1", "riskyLevel": 2, "isHit": False, "order": 1, "des": "x"}
+    ],
+    "evmDisplay": {"isOpenSource": "SAFE"},
+    "solanaDisplay": {},
+    "exist": True,
+    "tags": ["stablecoin"],
+}
+
+
+def test_e2e_probe_sends_platform_name_and_address_provider_keys() -> None:
+    probe = _probe("cmc_dex_security_detail")
+    assert probe.route == "/v1/dex/security/detail"
+    assert probe.shape == "dex_security_detail"
+    assert probe.params == {"platformName": "Ethereum", "address": USDC}
+    assert list(probe.params) == ["platformName", "address"]
+    assert "platform" not in probe.params and "tokenAddress" not in probe.params
+    # Tool arguments platform/address serialized exactly as the handler does.
+    assert probe.params == dex_security_detail_params("Ethereum", USDC)
+    assert [p.tool for p in LIVE_MATRIX].count("cmc_dex_security_detail") == 1
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        [],
+        [{}],
+        [D8_FULL_RECORD],
+        [{"exist": False}],
+        [{"securityLevel": None, "tokenContractAddress": "other"}],
+        [D8_FULL_RECORD, {}],
+    ],
+)
+def test_e2e_shape_accepts_empty_full_and_sparse_records(data) -> None:
+    assert _shape_check(data, _probe("cmc_dex_security_detail").shape)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ([], True),
+        ([{}], True),
+        ([{"a": 1}, {}], True),
+        ({}, False),
+        ({"data": []}, False),
+        (None, False),
+        ("", False),
+        ((), False),
+        (({},), False),
+        ([1], False),
+        ([None], False),
+        ([[]], False),
+        ([{}, "x"], False),
+    ],
+)
+def test_is_mapping_list_is_exact(value, expected: bool) -> None:
+    assert _is_mapping_list(value) is expected

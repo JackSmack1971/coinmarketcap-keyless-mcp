@@ -217,3 +217,12 @@ def dex_holders_count_params(platform: str, address: str) -> dict[str, str]:
     """
 
     return {"platform": platform, "tokenAddress": address}
+
+
+def dex_security_detail_params(platform: str, address: str) -> dict[str, str]:
+    """Build the exact DEX security-detail query: provider keys platformName then address.
+
+    The public argument ``platform`` is sent as ``platformName``; values pass through unchanged.
+    """
+
+    return {"platformName": platform, "address": address}

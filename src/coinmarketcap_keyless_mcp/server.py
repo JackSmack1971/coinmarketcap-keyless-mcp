@@ -36,6 +36,7 @@ from .models import (
     UniqueSymbols,
     dex_holders_count_params,
     dex_platform_detail_params,
+    dex_security_detail_params,
     dex_token_params,
     dex_token_price_params,
     price_conversion_params,
@@ -345,6 +346,16 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     async def cmc_dex_holders_count(platform: DexPlatform, address: DexAddress) -> ProviderEnvelope:
         return await get(
             ROUTES["cmc_dex_holders_count"], dex_holders_count_params(platform, address)
+        )
+
+    @server.tool(
+        name="cmc_dex_security_detail", description=_description("cmc_dex_security_detail")
+    )
+    async def cmc_dex_security_detail(
+        platform: DexPlatform, address: DexAddress
+    ) -> ProviderEnvelope:
+        return await get(
+            ROUTES["cmc_dex_security_detail"], dex_security_detail_params(platform, address)
         )
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The
