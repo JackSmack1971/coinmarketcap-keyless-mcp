@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); E2-D (D16) contract approved (`E2D_CONTRACT_APPROVED`, 2026-10-02), implementation not started; v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -183,6 +183,14 @@ E2-C is limited to D12 `cmc_dex_platform_detail` (`GET /v1/dex/platform/detail`)
 The contract requires a single public argument `platform`, typed as E2-A's `DexPlatform` without change, even though the provider documents the parameter as optional. A dedicated top-level helper serializes it as exactly `{"platformName": <platform>}`. The cache TTL is 900 seconds, the same as D11. The provider envelope and `PlatformDTO` pass through unchanged, and the existing error taxonomy and 2 MiB cap apply. Current official documentation plus the accepted E2-A D11 evidence resolved the contract, so no live probe was made. The verifier minimum (a mapping with a positive non-bool integer `id` and a non-empty string `n`) is documentation/D11-derived, and live D12 verification is pending.
 
 **E2-C status: `E2C_ACCEPTED` (2026-10-02) — D12 only.** The contract (`E2C_CONTRACT_APPROVED`) authorized implementation of D12 only. Implementation `fcb798c` passed the non-live gates, the mutation gate (93.5%, all three automated `dex_platform_detail_params` mutants killed, eight hand mutations killed) and an independent implementation review recorded in `verification/v1.1-e2c-contract-review.md`. That review also clarified that the live fixture `{"platform": "Ethereum"}` is the tool argument, and that the live probe's provider params are `{"platformName": "Ethereum"}`. Live D12 verification is pending. Acceptance does not authorize D6 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+
+## 4.5 E2-D DEX holder count contract review
+
+E2-D is limited to D16 `cmc_dex_holders_count` (`GET /v1/dex/holders/count`). Its public contract was reviewed before implementation and is recorded in `verification/v1.1-e2d-contract-review.md`.
+
+The contract reuses the public `platform` + `address` arguments with E2-A's `DexPlatform` and `DexAddress` unchanged. A dedicated top-level helper serializes them as exactly `{"platform": <platform>, "tokenAddress": <address>}`. The cache TTL is 60 seconds. The provider envelope and `HolderCountVO` pass through unchanged, and the existing error taxonomy and 2 MiB cap apply. Current official documentation plus accepted E2-A/B identity evidence resolved the contract, so no live probe was made. The verifier minimum (a mapping whose `count` is a non-negative non-bool integer; zero valid) is documentation-derived, and live D16 verification is pending.
+
+**E2-D status: `E2D_CONTRACT_APPROVED` (2026-10-02) — D16 only; implementation not started.** Approval does not authorize D6, D8 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 
