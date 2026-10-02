@@ -192,6 +192,14 @@ The contract reuses the public `platform` + `address` arguments with E2-A's `Dex
 
 **E2-D status: `E2D_ACCEPTED` (2026-10-02) — D16 only.** The amended contract (`E2D_CONTRACT_APPROVED`, `03567b0`) authorized implementation of D16 only. Implementation `58d8e87` passed the non-live gates (1003 tests), the mutation gate (93.5%; killed 1024, survived 71, timeout 3; all five automated `dex_holders_count_params` mutants killed) and twelve review-time hand mutations (all killed), with an independent implementation review recorded in `verification/v1.1-e2d-contract-review.md`. The D16 verifier shape remains documentation-derived and live D16 verification is pending. Acceptance does not authorize D6, D8 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
+## 4.6 E2-E DEX security detail contract review
+
+E2-E is limited to D8 `cmc_dex_security_detail` (`GET /v1/dex/security/detail`). Its public contract was reviewed before implementation and is recorded in `verification/v1.1-e2e-contract-review.md`.
+
+The contract reuses the public `platform` + `address` arguments with E2-A's `DexPlatform` and `DexAddress` unchanged. A dedicated top-level helper serializes them as exactly `{"platformName": <platform>, "address": <address>}`. The cache TTL is 300 seconds. The provider envelope and the `TokenSecurityResponseDTO[]` array pass through unchanged, with no risk scoring, filtering, coercion or interpretation. The existing error taxonomy and 2 MiB cap apply. Current official documentation plus accepted E2-A/B/C identity evidence resolved the contract, so no live probe was made. The verifier minimum is that `data` is a list whose elements are all mappings. An empty array is valid and no field is required. This minimum is documentation-derived, and live D8 verification is pending. Verifier logic stays in `verify_live.py` and is pinned by focused tests and hand mutations, with no mutmut configuration change.
+
+**E2-E status: `E2E_CONTRACT_APPROVED` (2026-10-02) — D8 only; implementation not started.** This approval does not authorize D6 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+
 ## 5. Planning hierarchy and change control
 
 1. Active user request and explicit approved amendments.
