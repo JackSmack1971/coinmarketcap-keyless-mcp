@@ -27,7 +27,7 @@ async def test_in_process_surface_is_the_transport_parity_reference() -> None:
     async with Client(create_server(FixtureClient())) as client:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
-    assert len(tools.tools) == 21
+    assert len(tools.tools) == 22
 
 
 def _surface(tools) -> list[tuple[str, str | None, dict[str, Any]]]:
@@ -163,6 +163,71 @@ async def test_d3_call_results_match_across_in_process_and_streamable_http() -> 
     try:
         async with Client(streamable_http_client(url)) as client:
             http = await _d3_results(client)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert in_process == http
+
+
+# --- v1.1 E2-C D12 discovery and call-result parity (v1.1-e2c-contract-review.md) -----
+
+D12_CALLS = [
+    {"platform": "B² Network"},  # success, echoes the exact provider query
+    {"platform": "Ethereum", "platformName": "x"},  # unknown field
+    {"platform": "Ethereum#x"},  # query delimiter
+    {},  # missing required platform
+]
+
+
+async def _d12_results(client: Client) -> list[tuple[Any, ...]]:
+    tool = {t.name: t for t in (await client.list_tools()).tools}["cmc_dex_platform_detail"]
+    results: list[tuple[Any, ...]] = [(tool.description, tool.input_schema)]
+    for arguments in D12_CALLS:
+        result = await client.call_tool("cmc_dex_platform_detail", arguments)
+        results.append((result.is_error, result.structured_content))
+    return results
+
+
+@pytest.mark.asyncio
+async def test_d12_discovery_and_results_match_across_in_process_and_stdio() -> None:
+    async with Client(create_server(EchoClient())) as client:
+        in_process = await _d12_results(client)
+    params = StdioServerParameters(command=sys.executable, args=["-c", _echo_code()])
+    async with Client(stdio_client(params)) as client:
+        stdio = await _d12_results(client)
+    assert in_process == stdio
+    assert in_process[1] == (
+        False,
+        {
+            "status": {"error_code": 0},
+            "data": {
+                "route": "/v1/dex/platform/detail",
+                "params": {"platformName": "B² Network"},
+            },
+        },
+    )
+    assert [result[0] for result in in_process[1:]] == [False, True, True, True]
+
+
+@pytest.mark.streamable_http
+@pytest.mark.asyncio
+async def test_d12_discovery_and_results_match_across_in_process_and_streamable_http() -> None:
+    async with Client(create_server(EchoClient())) as client:
+        in_process = await _d12_results(client)
+
+    port = _free_port()
+    task = asyncio.create_task(run_server("streamable-http", port=port, client_factory=EchoClient))
+    url = f"http://127.0.0.1:{port}/mcp"
+    for _ in range(50):
+        try:
+            async with streamable_http_client(url):
+                break
+        except Exception:
+            await asyncio.sleep(0.05)
+    try:
+        async with Client(streamable_http_client(url)) as client:
+            http = await _d12_results(client)
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):

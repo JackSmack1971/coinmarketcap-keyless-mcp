@@ -199,3 +199,12 @@ def dex_token_params(platform: str, address: str) -> dict[str, str]:
     """
 
     return {"platform": platform, "address": address}
+
+
+def dex_platform_detail_params(platform: str) -> dict[str, str]:
+    """Build the exact DEX platform-detail query: the single provider key platformName.
+
+    The public argument is ``platform``; the value is passed through unchanged.
+    """
+
+    return {"platformName": platform}

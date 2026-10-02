@@ -76,6 +76,13 @@ E2B_DESCRIPTIONS = {
     "cmc_dex_token": "Get CoinMarketCap DEX token detail (metadata, market, liquidity and pool fields) for one token identified by platform name and token contract address; use platform-list to discover platform names.",
 }
 
+# v1.1 E2-C addition (verification/v1.1-e2c-contract-review.md), pinned separately.
+E2C_ROUTES = {"cmc_dex_platform_detail": "/v1/dex/platform/detail"}
+
+E2C_DESCRIPTIONS = {
+    "cmc_dex_platform_detail": "Get CoinMarketCap DEX detail for one blockchain platform identified by platform name; use platform-list to discover platform names.",
+}
+
 # Deferred (D5) and excluded (D15, D17) DEX candidates from V1_1_CAPABILITY_INVENTORY.md.
 ABSENT_DEX = {
     "cmc_dex_token_liquidity": "/v1/dex/token-liquidity/query",
@@ -92,7 +99,6 @@ UNAUTHORIZED_DEX = {
     "cmc_dex_security_detail": "/v1/dex/security/detail",
     "cmc_dex_transactions": "/v1/dex/tokens/transactions",
     "cmc_dex_liquidity_change_list": "/v1/dex/liquidity-change/list",
-    "cmc_dex_platform_detail": "/v1/dex/platform/detail",
     "cmc_dex_kline_candles": "/v1/k-line/candles",
     "cmc_dex_kline_points": "/v1/k-line/points",
     "cmc_dex_holders_count": "/v1/dex/holders/count",
@@ -105,16 +111,23 @@ def test_package_imports_successfully() -> None:
 
 def test_phase_zero_locks_exact_route_surface() -> None:
     assert BASE_URL == "https://pro-api.coinmarketcap.com/public-api"
-    assert dict(ROUTES) == {**EXPECTED_ROUTES, **E1R_ROUTES, **E2A_ROUTES, **E2B_ROUTES}
+    assert dict(ROUTES) == {
+        **EXPECTED_ROUTES,
+        **E1R_ROUTES,
+        **E2A_ROUTES,
+        **E2B_ROUTES,
+        **E2C_ROUTES,
+    }
     assert {contract.name for contract in TOOL_CONTRACTS} == (
-        set(EXPECTED_ROUTES) | set(E1R_ROUTES) | set(E2A_ROUTES) | set(E2B_ROUTES)
+        set(EXPECTED_ROUTES) | set(E1R_ROUTES) | set(E2A_ROUTES) | set(E2B_ROUTES) | set(E2C_ROUTES)
     )
-    assert len(TOOL_CONTRACTS) == 21
+    assert len(TOOL_CONTRACTS) == 22
     assert all(contract.method == "GET" for contract in TOOL_CONTRACTS)
-    # Exactly the E2-A and E2-B DEX routes; no other DEX surface.
+    # Exactly the E2-A, E2-B and E2-C DEX routes; no other DEX surface.
     assert {name: route for name, route in ROUTES.items() if "/dex/" in route.lower()} == {
         **E2A_ROUTES,
         **E2B_ROUTES,
+        **E2C_ROUTES,
     }
 
 
@@ -130,13 +143,14 @@ def test_dex_routes_without_an_accepted_slice_contract_are_absent() -> None:
 
 
 def test_contracts_are_one_to_one_and_described() -> None:
-    assert len({contract.name for contract in TOOL_CONTRACTS}) == 21
-    assert len(set(ROUTES.values())) == 21
+    assert len({contract.name for contract in TOOL_CONTRACTS}) == 22
+    assert len(set(ROUTES.values())) == 22
     assert {contract.name: contract.description for contract in TOOL_CONTRACTS} == {
         **EXPECTED_DESCRIPTIONS,
         **E1R_DESCRIPTIONS,
         **E2A_DESCRIPTIONS,
         **E2B_DESCRIPTIONS,
+        **E2C_DESCRIPTIONS,
     }
 
 
@@ -155,7 +169,11 @@ def test_frozen_v1_contracts_are_unchanged_and_first() -> None:
     assert {
         contract.name: contract.description for contract in TOOL_CONTRACTS[18:20]
     } == E2A_DESCRIPTIONS
-    assert [contract.name for contract in TOOL_CONTRACTS[20:]] == list(E2B_ROUTES)
+    assert {contract.name: contract.route for contract in TOOL_CONTRACTS[20:21]} == E2B_ROUTES
+    assert {
+        contract.name: contract.description for contract in TOOL_CONTRACTS[20:21]
+    } == E2B_DESCRIPTIONS
+    assert [contract.name for contract in TOOL_CONTRACTS[21:]] == list(E2C_ROUTES)
 
 
 def test_e1r_price_conversion_description_names_exactly_one_target() -> None:

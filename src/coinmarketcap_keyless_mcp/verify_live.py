@@ -83,6 +83,9 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
         {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
         "dex_token",
     ),
+    # E2-C contract review: tool argument platform="Ethereum" (observed live in E2-A),
+    # sent as the provider query key platformName, as models.dex_platform_detail_params does.
+    LiveProbe("cmc_dex_platform_detail", {"platformName": "Ethereum"}, "dex_platform_detail"),
 )
 
 
@@ -303,6 +306,16 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
             isinstance(data, Mapping) and bool(data) and _is_nonempty_str(data.get("addr"))
         ),
         lambda data: "DEX token detail with addr",
+    ),
+    # Documentation/D11-derived minimum: n is not compared with the requested name
+    # and pltA and other optional PlatformDTO fields are not required.
+    "dex_platform_detail": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and _is_positive_int(data.get("id"))
+            and _is_nonempty_str(data.get("n"))
+        ),
+        lambda data: "DEX platform detail with id and name",
     ),
 }
 

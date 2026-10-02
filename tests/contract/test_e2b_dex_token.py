@@ -87,11 +87,11 @@ async def _no_sleep(_: float) -> None:
 
 
 def test_d3_contract_identity_route_and_ttl() -> None:
-    contract = TOOL_CONTRACTS[-1]
+    (contract,) = [c for c in TOOL_CONTRACTS if c.name == TOOL]
     assert (contract.name, contract.route, contract.method) == (TOOL, "/v1/dex/token", "GET")
     assert contract.description == DESCRIPTION
     assert [c.route for c in TOOL_CONTRACTS].count("/v1/dex/token") == 1
-    assert len(TOOL_CONTRACTS) == 21
+    assert TOOL_CONTRACTS[20] is contract
     assert CACHE_TTLS_BY_ROUTE["/v1/dex/token"] == 15
 
 

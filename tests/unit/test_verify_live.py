@@ -9,6 +9,7 @@ import pytest
 from coinmarketcap_keyless_mcp.client import KeylessHttpClient
 from coinmarketcap_keyless_mcp.contracts import BASE_URL, ROUTES
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
+from coinmarketcap_keyless_mcp.models import dex_platform_detail_params
 from coinmarketcap_keyless_mcp.verify_live import (
     LIVE_MATRIX,
     CapabilityClassification,
@@ -60,6 +61,9 @@ VALID_DATA = {
     # Only a non-empty string addr is required; n/sym/plt and market fields are optional
     # and addr need not equal the requested address (case may differ).
     "cmc_dex_token": {"addr": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},
+    # Positive int id and non-empty string n only; pltA and other fields are optional
+    # and n need not equal the requested platform name (case may differ).
+    "cmc_dex_platform_detail": {"id": 1, "n": "ethereum"},
 }
 
 UNRELATED = {"ok": True}
@@ -179,6 +183,27 @@ INVALID_DATA = {
         {"addr": ["0xA0b8"]},
         {"addr": {"v": "0xA0b8"}},
     ],
+    "cmc_dex_platform_detail": [
+        {},
+        [],
+        [{"id": 1, "n": "Ethereum"}],  # D11 list shape, not a single PlatformDTO
+        "Ethereum",
+        1,
+        None,
+        {"n": "Ethereum", "pltA": "ETH"},
+        {"id": 0, "n": "Ethereum"},
+        {"id": -1, "n": "Ethereum"},
+        {"id": True, "n": "Ethereum"},
+        {"id": "1", "n": "Ethereum"},
+        {"id": 1.0, "n": "Ethereum"},
+        {"id": None, "n": "Ethereum"},
+        {"id": 1},
+        {"id": 1, "n": ""},
+        {"id": 1, "n": None},
+        {"id": 1, "n": 1},
+        {"id": 1, "n": ["Ethereum"]},
+        {"id": 1, "pltA": "ETH"},
+    ],
     "cmc_dex_token_price": [
         {},
         [],
@@ -288,7 +313,7 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 21
+    assert len(report["routes"]) == 22
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -615,3 +640,18 @@ def test_e2b_probe_uses_the_contract_fixture_and_minimum_shape() -> None:
         "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     }
     assert [p.tool for p in LIVE_MATRIX].count("cmc_dex_token") == 1
+
+
+def test_e2c_probe_sends_platform_name_under_the_provider_key() -> None:
+    probe = _probe("cmc_dex_platform_detail")
+    assert probe.route == "/v1/dex/platform/detail"
+    # Tool argument platform="Ethereum" serialized exactly as the handler does.
+    assert probe.params == {"platformName": "Ethereum"}
+    assert probe.params == dex_platform_detail_params("Ethereum")
+    assert [p.tool for p in LIVE_MATRIX].count("cmc_dex_platform_detail") == 1
+
+
+def test_e2c_shape_accepts_without_optional_fields_or_name_equality() -> None:
+    shape = _probe("cmc_dex_platform_detail").shape
+    assert _shape_check({"id": 14, "n": "ETHEREUM"}, shape)
+    assert _shape_check({"id": 1, "n": "Ethereum", "pltA": "ETH", "dn": "12", "v": True}, shape)

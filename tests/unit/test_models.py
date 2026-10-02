@@ -235,3 +235,12 @@ def test_dex_token_params_does_not_swap_or_default_values() -> None:
     params = models.dex_token_params("P", "A")
     assert params == {"platform": "P", "address": "A"}
     assert "network_slug" not in params and "contract_address" not in params
+
+
+@pytest.mark.parametrize("platform", ["Ethereum", "eThErEuM", "B² Network", "x" * 64, "1"])
+def test_dex_platform_detail_params_is_exactly_platform_name(platform: str) -> None:
+    params = models.dex_platform_detail_params(platform)
+    assert params == {"platformName": platform}
+    assert list(params) == ["platformName"]
+    assert params["platformName"] is platform  # passed through, never normalized
+    assert "platform" not in params and "platform_name" not in params

@@ -44,7 +44,7 @@ from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 from importlib.metadata import version
 
 expected = [c.name for c in TOOL_CONTRACTS]
-assert len(expected) == 21
+assert len(expected) == 22
 package_path = Path(__import__("coinmarketcap_keyless_mcp").__file__).resolve()
 assert Path(sys.prefix).resolve() in package_path.parents, (sys.prefix, package_path)
 assert "src" not in package_path.parts
