@@ -181,3 +181,12 @@ def price_conversion_params(
     else:
         params["convert"] = convert if convert is not None else "USD"
     return params
+
+
+def dex_token_price_params(platform: str, address: str) -> dict[str, str]:
+    """Build the exact DEX token-price query: provider keys platform then address.
+
+    Values are passed through unchanged; case is never normalized.
+    """
+
+    return {"platform": platform, "address": address}

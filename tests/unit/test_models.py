@@ -185,3 +185,29 @@ def test_e2a_dex_platform_and_address_types() -> None:
     for rejected in ("", "a" * 129, "0x 1", "0x\n", "0x/1", "0x&1", "0x%1", "0x,1", "é"):
         with pytest.raises(ValidationError):
             address.validate_python(rejected)
+
+
+@pytest.mark.parametrize(
+    ("platform", "address"),
+    [
+        ("Ethereum", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+        ("eThErEuM", "0xa0B86991C6218B36"),
+        ("B² Network", "So1:_.-Z"),
+        ("BNB Smart Chain (BEP20)", "a"),
+    ],
+)
+def test_dex_token_price_params_is_exactly_platform_then_address(
+    platform: str, address: str
+) -> None:
+    params = models.dex_token_price_params(platform, address)
+    assert params == {"platform": platform, "address": address}
+    assert list(params) == ["platform", "address"]
+    assert len(params) == 2
+    assert params["platform"] is platform  # passed through, never normalized
+    assert params["address"] is address
+
+
+def test_dex_token_price_params_does_not_swap_or_default_values() -> None:
+    params = models.dex_token_price_params("P", "A")
+    assert params == {"platform": "P", "address": "A"}
+    assert "convert" not in params and "network" not in params
