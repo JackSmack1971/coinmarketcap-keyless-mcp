@@ -84,6 +84,23 @@ CategoryId = Annotated[
 ConversionAmount = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1e-8, le=1e12)]
 ExchangeSort = Literal["id", "volume_24h"]
 
+# v1.1 E2-A. Platform names keep their provider case and may contain inner spaces,
+# punctuation or non-ASCII letters, but never control characters, query delimiters
+# or leading/trailing whitespace. No local platform enum is frozen.
+_PLATFORM_CHAR = r"[^\x00-\x1f\x7f-\x9f&=?#]"
+_PLATFORM_EDGE = r"[^\s\x00-\x1f\x7f-\x9f&=?#]"
+DexPlatform = Annotated[
+    str,
+    StringConstraints(
+        pattern=rf"^{_PLATFORM_EDGE}(?:{_PLATFORM_CHAR}*{_PLATFORM_EDGE})?$",
+        min_length=1,
+        max_length=64,
+    ),
+]
+DexAddress = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z0-9_.:-]{1,128}$", min_length=1, max_length=128)
+]
+
 
 def require_exactly_one_selector(**selectors: list[T] | None) -> tuple[str, list[T]]:
     present = [(name, values) for name, values in selectors.items() if values]

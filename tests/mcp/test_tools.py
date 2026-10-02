@@ -39,6 +39,8 @@ CALL_ARGS = {
     "cmc_crypto_category": {"id": "605e2ce9d41eae1066535f7c"},
     "cmc_price_conversion": {"amount": 1, "id": 1},
     "cmc_exchange_map": {},
+    "cmc_dex_platform_list": {},
+    "cmc_dex_token_price": {"platform": "Ethereum", "address": "0xA0b86991"},
 }
 
 
@@ -49,7 +51,7 @@ def _properties(server) -> dict[str, dict[str, Any]]:
 
 
 @pytest.mark.asyncio
-async def test_in_process_discovery_exposes_exact_18_tools() -> None:
+async def test_in_process_discovery_exposes_exact_20_tools() -> None:
     server = create_server(RecordingClient())
     async with Client(server) as client:
         discovered = await client.list_tools()
@@ -338,7 +340,7 @@ E1R_SCHEMAS = {
 async def test_e1r_discovered_schemas_are_exact_strict_snapshots() -> None:
     async with Client(create_server(RecordingClient())) as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
-    assert list(tools)[13:] == E1R_NAMES
+    assert list(tools)[13:18] == E1R_NAMES
     for name in E1R_NAMES:
         assert tools[name].input_schema == E1R_SCHEMAS[name]
 
@@ -621,3 +623,153 @@ async def test_ids_accept_ordinary_positive_integers(tool: str) -> None:
     assert [(route, params["id"]) for route, params in recording.calls] == [
         (ROUTES[tool], "1,1027")
     ]
+
+
+# --- v1.1 E2-A DEX identity foundation (verification/v1.1-e2a-contract-review.md) ------
+
+E2A_NAMES = ["cmc_dex_platform_list", "cmc_dex_token_price"]
+_PLATFORM_EDGE = r"[^\s\x00-\x1f\x7f-\x9f&=?#]"
+_PLATFORM_CHAR = r"[^\x00-\x1f\x7f-\x9f&=?#]"
+E2A_SCHEMAS = {
+    "cmc_dex_platform_list": {
+        "additionalProperties": False,
+        "properties": {},
+        "title": "cmc_dex_platform_listArguments",
+        "type": "object",
+    },
+    "cmc_dex_token_price": {
+        "additionalProperties": False,
+        "properties": {
+            "platform": {
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": f"^{_PLATFORM_EDGE}(?:{_PLATFORM_CHAR}*{_PLATFORM_EDGE})?$",
+                "title": "Platform",
+                "type": "string",
+            },
+            "address": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+                "title": "Address",
+                "type": "string",
+            },
+        },
+        "required": ["platform", "address"],
+        "title": "cmc_dex_token_priceArguments",
+        "type": "object",
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_e2a_discovered_schemas_are_exact_and_earlier_tools_unchanged() -> None:
+    async with Client(create_server(RecordingClient())) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+    assert len(tools) == 20
+    assert list(tools)[18:] == E2A_NAMES
+    for name in E2A_NAMES:
+        assert tools[name].input_schema == E2A_SCHEMAS[name]
+    for name in E1R_NAMES:
+        assert tools[name].input_schema == E1R_SCHEMAS[name]
+    for name, schema in FROZEN_IDS_SCHEMAS.items():
+        assert tools[name].input_schema == schema
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("arguments", "query"),
+    [
+        (
+            {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+            {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        ),
+        (  # case preserved exactly, never normalized
+            {"platform": "eThErEuM", "address": "0xa0B86991C6218B36"},
+            {"platform": "eThErEuM", "address": "0xa0B86991C6218B36"},
+        ),
+        (  # inner spaces, punctuation and non-ASCII names; non-EVM address forms
+            {"platform": "BNB Smart Chain (BEP20)", "address": "So1111111111111111111"},
+            {"platform": "BNB Smart Chain (BEP20)", "address": "So1111111111111111111"},
+        ),
+        (
+            {"platform": "B² Network", "address": "EQ:abc_d.e-f"},
+            {"platform": "B² Network", "address": "EQ:abc_d.e-f"},
+        ),
+        (
+            {"platform": "x" * 64, "address": "a" * 128},
+            {"platform": "x" * 64, "address": "a" * 128},
+        ),
+        ({"platform": "1", "address": "a"}, {"platform": "1", "address": "a"}),
+    ],
+)
+async def test_dex_token_price_serializes_exactly_platform_and_address(
+    arguments: dict[str, Any], query: dict[str, Any]
+) -> None:
+    recording = RecordingClient()
+    async with Client(create_server(recording)) as client:
+        result = await client.call_tool("cmc_dex_token_price", arguments)
+    assert not result.is_error
+    assert recording.calls == [(ROUTES["cmc_dex_token_price"], query)]
+    assert list(recording.calls[0][1]) == ["platform", "address"]
+
+
+@pytest.mark.asyncio
+async def test_dex_platform_list_sends_no_query() -> None:
+    recording = RecordingClient()
+    async with Client(create_server(recording)) as client:
+        result = await client.call_tool("cmc_dex_platform_list", {})
+    assert not result.is_error
+    assert recording.calls == [(ROUTES["cmc_dex_platform_list"], None)]
+
+
+E2A_INVALID = [
+    ("cmc_dex_platform_list", {"platform": "Ethereum"}),
+    ("cmc_dex_platform_list", {"start": 1}),
+    ("cmc_dex_token_price", {}),
+    ("cmc_dex_token_price", {"platform": "Ethereum"}),
+    ("cmc_dex_token_price", {"address": "0xA0b8"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8", "network": "x"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8", "convert": "USD"}),
+    # platform: length, whitespace, control characters, query delimiters, type
+    ("cmc_dex_token_price", {"platform": "", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "x" * 65, "address": "a"}),
+    ("cmc_dex_token_price", {"platform": " Ethereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum ", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": " ", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": " Ethereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum\n", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Eth\tereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Eth\x00ereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Eth\x7fereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Eth\x85ereum", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum&address=0xdead", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum=1", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum?x", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum#x", "address": "a"}),
+    ("cmc_dex_token_price", {"platform": 1, "address": "a"}),
+    ("cmc_dex_token_price", {"platform": ["Ethereum"], "address": "a"}),
+    # address: length, pattern, whitespace, delimiters, path characters, type
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": ""}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "a" * 129}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": " 0xA0b8"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8\n"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8&platform=x"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8/../x"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8?x"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8%26x"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": "0xA0b8,0xC0de"}),
+    ("cmc_dex_token_price", {"platform": "Ethereum", "address": 1}),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tool", "arguments"), E2A_INVALID)
+async def test_e2a_invalid_arguments_are_rejected_before_any_transport_call(
+    tool: str, arguments: dict[str, Any]
+) -> None:
+    recording = RecordingClient()
+    async with Client(create_server(recording)) as client:
+        result = await client.call_tool(tool, arguments)
+    assert result.is_error
+    assert recording.calls == []

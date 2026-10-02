@@ -152,3 +152,36 @@ def test_ids_items_are_strict_positive_integers() -> None:
         with pytest.raises(ValidationError):
             ids.validate_python(rejected)
     assert ids.json_schema()["items"] == {"minimum": 1, "type": "integer"}
+
+
+def test_e2a_dex_platform_and_address_types() -> None:
+    from pydantic import TypeAdapter, ValidationError
+
+    platform = TypeAdapter(models.DexPlatform)
+    for accepted in ("Ethereum", "ethereum", "E", "B² Network", "Arbitrum One", "x" * 64):
+        assert platform.validate_python(accepted) == accepted
+    for rejected in (
+        "",
+        "x" * 65,
+        " E",
+        "E ",
+        " E",
+        "E\n",
+        "E\r",
+        "E\x1fx",
+        "E\x7fx",
+        "E\x9fx",
+        "a&b",
+        "a=b",
+        "a?b",
+        "a#b",
+    ):
+        with pytest.raises(ValidationError):
+            platform.validate_python(rejected)
+
+    address = TypeAdapter(models.DexAddress)
+    for accepted in ("0xA0b8", "a", "a" * 128, "So1:_.-Z"):
+        assert address.validate_python(accepted) == accepted
+    for rejected in ("", "a" * 129, "0x 1", "0x\n", "0x/1", "0x&1", "0x%1", "0x,1", "é"):
+        with pytest.raises(ValidationError):
+            address.validate_python(rejected)

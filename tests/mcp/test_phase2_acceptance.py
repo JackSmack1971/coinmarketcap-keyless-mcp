@@ -52,7 +52,7 @@ async def test_discovered_surface_and_schema_are_exactly_bounded() -> None:
     async with Client(server) as client:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
-    assert len(NAMES) == 18
+    assert len(NAMES) == 20
     assert all(
         set(tool.input_schema["properties"]) == set(schema(server, tool.name))
         for tool in tools.tools

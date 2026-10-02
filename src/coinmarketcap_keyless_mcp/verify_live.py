@@ -70,6 +70,13 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
         "cmc_price_conversion", {"amount": "1", "id": 1, "convert": "USD"}, "price_conversion"
     ),
     LiveProbe("cmc_exchange_map", {"start": 1, "limit": 2}, "exchange_list"),
+    LiveProbe("cmc_dex_platform_list", {}, "dex_platform_list"),
+    # Deterministic fixture from the E2-A contract review: Ethereum USDC.
+    LiveProbe(
+        "cmc_dex_token_price",
+        {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        "dex_token_price",
+    ),
 )
 
 
@@ -265,6 +272,23 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
             ),
         ),
         lambda data: "exchange list with ids and slugs; result count=%d" % len(data),
+    ),
+    # pltA is not required: live evidence showed some platform records omit it.
+    "dex_platform_list": (
+        lambda data: _nonempty_list_of(
+            data,
+            lambda item: (
+                isinstance(item, Mapping)
+                and isinstance(item.get("id"), int)
+                and not isinstance(item.get("id"), bool)
+                and _is_nonempty_str(item.get("n"))
+            ),
+        ),
+        lambda data: "DEX platform list with ids and names; result count=%d" % len(data),
+    ),
+    "dex_token_price": (
+        lambda data: isinstance(data, Mapping) and bool(data) and _is_number(data.get("p")),
+        lambda data: "DEX token price with numeric p",
     ),
 }
 

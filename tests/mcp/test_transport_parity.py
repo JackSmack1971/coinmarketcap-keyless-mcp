@@ -27,7 +27,7 @@ async def test_in_process_surface_is_the_transport_parity_reference() -> None:
     async with Client(create_server(FixtureClient())) as client:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
-    assert len(tools.tools) == 18
+    assert len(tools.tools) == 20
 
 
 def _surface(tools) -> list[tuple[str, str | None, dict[str, Any]]]:

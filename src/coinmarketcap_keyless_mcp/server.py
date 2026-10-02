@@ -17,6 +17,8 @@ from .errors import CmcClientError, ErrorCode
 from .models import (
     CategoryId,
     ConversionAmount,
+    DexAddress,
+    DexPlatform,
     ExchangeSort,
     Ids,
     IndexInterval,
@@ -84,7 +86,7 @@ def _index_history_params(
 
 
 def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
-    """Create the high-level MCP server with the exact 18-tool contract."""
+    """Create the high-level MCP server with the exact 20-tool contract."""
 
     upstream = client if client is not None else KeylessHttpClient()
     server = MCPServer("coinmarketcap-keyless-mcp", version=version("coinmarketcap-keyless-mcp"))
@@ -316,6 +318,14 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
                 "sort": sort,
             },
         )
+
+    @server.tool(name="cmc_dex_platform_list", description=_description("cmc_dex_platform_list"))
+    async def cmc_dex_platform_list() -> ProviderEnvelope:
+        return await get(ROUTES["cmc_dex_platform_list"])
+
+    @server.tool(name="cmc_dex_token_price", description=_description("cmc_dex_token_price"))
+    async def cmc_dex_token_price(platform: DexPlatform, address: DexAddress) -> ProviderEnvelope:
+        return await get(ROUTES["cmc_dex_token_price"], {"platform": platform, "address": address})
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The
     # Phase 2 contract requires strict rejection, so tighten each registered

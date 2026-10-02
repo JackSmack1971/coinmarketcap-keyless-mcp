@@ -113,6 +113,17 @@ _CONTRACTS = (
         "Resolve CoinMarketCap exchange IDs and slugs, paginated and filterable by listing status.",
         "/v1/exchange/map",
     ),
+    # v1.1 E2-A DEX identity foundation (verification/v1.1-e2a-contract-review.md).
+    ToolContract(
+        "cmc_dex_platform_list",
+        "Get the list of blockchain platforms supported by CoinMarketCap DEX data; use it to discover platform names accepted by DEX tools.",
+        "/v1/dex/platform/list",
+    ),
+    ToolContract(
+        "cmc_dex_token_price",
+        "Get current CoinMarketCap DEX price data for one token identified by platform name and token contract address; use platform-list to discover platform names.",
+        "/v1/dex/token/price",
+    ),
 )
 
 TOOL_CONTRACTS: Final[tuple[ToolContract, ...]] = _CONTRACTS

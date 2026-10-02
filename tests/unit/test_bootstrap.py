@@ -58,25 +58,53 @@ E1R_DESCRIPTIONS = {
 }
 
 
+# v1.1 E2-A additions (verification/v1.1-e2a-contract-review.md), pinned separately.
+E2A_ROUTES = {
+    "cmc_dex_platform_list": "/v1/dex/platform/list",
+    "cmc_dex_token_price": "/v1/dex/token/price",
+}
+
+E2A_DESCRIPTIONS = {
+    "cmc_dex_platform_list": "Get the list of blockchain platforms supported by CoinMarketCap DEX data; use it to discover platform names accepted by DEX tools.",
+    "cmc_dex_token_price": "Get current CoinMarketCap DEX price data for one token identified by platform name and token contract address; use platform-list to discover platform names.",
+}
+
+# Deferred (D5) and excluded (D15, D17) DEX candidates from V1_1_CAPABILITY_INVENTORY.md.
+ABSENT_DEX = {
+    "cmc_dex_token_liquidity": "/v1/dex/token-liquidity/query",
+    "cmc_dex_holders_list": "/v1/dex/holders/list",
+    "cmc_dex_holders_detail": "/v1/dex/holders/detail",
+}
+
+
 def test_package_imports_successfully() -> None:
     assert importlib.import_module("coinmarketcap_keyless_mcp")
 
 
 def test_phase_zero_locks_exact_route_surface() -> None:
     assert BASE_URL == "https://pro-api.coinmarketcap.com/public-api"
-    assert dict(ROUTES) == {**EXPECTED_ROUTES, **E1R_ROUTES}
-    assert {contract.name for contract in TOOL_CONTRACTS} == set(EXPECTED_ROUTES) | set(E1R_ROUTES)
-    assert len(TOOL_CONTRACTS) == 18
+    assert dict(ROUTES) == {**EXPECTED_ROUTES, **E1R_ROUTES, **E2A_ROUTES}
+    assert {contract.name for contract in TOOL_CONTRACTS} == (
+        set(EXPECTED_ROUTES) | set(E1R_ROUTES) | set(E2A_ROUTES)
+    )
+    assert len(TOOL_CONTRACTS) == 20
     assert all(contract.method == "GET" for contract in TOOL_CONTRACTS)
-    assert all("/dex/" not in route.lower() for route in ROUTES.values())
+    # Exactly the two E2-A-approved DEX routes; no other DEX surface.
+    assert {name: route for name, route in ROUTES.items() if "/dex/" in route.lower()} == E2A_ROUTES
+
+
+def test_deferred_and_excluded_dex_candidates_are_absent() -> None:
+    assert not set(ABSENT_DEX) & set(ROUTES)
+    assert not set(ABSENT_DEX.values()) & set(ROUTES.values())
 
 
 def test_contracts_are_one_to_one_and_described() -> None:
-    assert len({contract.name for contract in TOOL_CONTRACTS}) == 18
-    assert len(set(ROUTES.values())) == 18
+    assert len({contract.name for contract in TOOL_CONTRACTS}) == 20
+    assert len(set(ROUTES.values())) == 20
     assert {contract.name: contract.description for contract in TOOL_CONTRACTS} == {
         **EXPECTED_DESCRIPTIONS,
         **E1R_DESCRIPTIONS,
+        **E2A_DESCRIPTIONS,
     }
 
 
@@ -85,7 +113,12 @@ def test_frozen_v1_contracts_are_unchanged_and_first() -> None:
     assert [contract.name for contract in frozen] == list(EXPECTED_ROUTES)
     assert {contract.name: contract.route for contract in frozen} == EXPECTED_ROUTES
     assert {contract.name: contract.description for contract in frozen} == EXPECTED_DESCRIPTIONS
-    assert [contract.name for contract in TOOL_CONTRACTS[13:]] == list(E1R_ROUTES)
+    assert [contract.name for contract in TOOL_CONTRACTS[13:18]] == list(E1R_ROUTES)
+    assert {contract.name: contract.route for contract in TOOL_CONTRACTS[13:18]} == E1R_ROUTES
+    assert {
+        contract.name: contract.description for contract in TOOL_CONTRACTS[13:18]
+    } == E1R_DESCRIPTIONS
+    assert [contract.name for contract in TOOL_CONTRACTS[18:]] == list(E2A_ROUTES)
 
 
 def test_e1r_price_conversion_description_names_exactly_one_target() -> None:

@@ -52,6 +52,11 @@ VALID_DATA = {
     "cmc_crypto_category": {"1": {"id": "605e2ce9d41eae1066535f7c", "coins": [_QUOTED]}},
     "cmc_price_conversion": {"amount": 1, "quote": {"USD": {"price": 63120.95}}},
     "cmc_exchange_map": [{"id": 270, "slug": "binance", "name": "Binance"}],
+    "cmc_dex_platform_list": [
+        {"id": 1, "n": "Ethereum", "pltA": "ETH"},
+        {"id": 2, "n": "B² Network"},  # pltA may be absent
+    ],
+    "cmc_dex_token_price": {"p": 0.9998, "pid": 1, "a": "0xA0b86991"},
 }
 
 UNRELATED = {"ok": True}
@@ -146,6 +151,30 @@ INVALID_DATA = {
         {"amount": 1, "quote": {"USD": UNRELATED}},
         {"amount": 1},
     ],
+    "cmc_dex_platform_list": [
+        [],
+        UNRELATED,
+        ["Ethereum"],
+        [{"n": "Ethereum"}],
+        [{"id": True, "n": "Ethereum"}],
+        [{"id": "1", "n": "Ethereum"}],
+        [{"id": 1.0, "n": "Ethereum"}],
+        [{"id": 1}],
+        [{"id": 1, "n": ""}],
+        [{"id": 1, "n": 5}],
+        [{"id": 1, "n": "Ethereum"}, {"id": 2}],
+    ],
+    "cmc_dex_token_price": [
+        {},
+        [],
+        [{"p": 1.0}],
+        {"pid": 1},
+        {"p": True},
+        {"p": "1.0"},
+        {"p": None},
+        {"p": float("nan")},
+        {"p": float("inf")},
+    ],
     "cmc_exchange_map": [
         [],
         UNRELATED,
@@ -179,7 +208,7 @@ def test_unrelated_or_mistyped_data_fails_minimum_shape(tool: str, data) -> None
         _shape_check(data, _probe(tool).shape)
 
 
-def test_matrix_contains_exactly_eighteen_routes_and_minimal_queries() -> None:
+def test_matrix_contains_exactly_twenty_routes_and_minimal_queries() -> None:
     assert [probe.tool for probe in LIVE_MATRIX] == list(ROUTES)
     assert LIVE_MATRIX[0].params == {"symbol": "BTC"}
     assert LIVE_MATRIX[2].params == {"id": "1,1027", "convert": "USD"}
@@ -244,7 +273,7 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 18
+    assert len(report["routes"]) == 20
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -553,3 +582,11 @@ async def test_actual_s3_shape_failure_is_still_s3_contract_mismatch(s3_data) ->
     ]
     assert report["routes"][0]["classification"] == "CONTRACT_MISMATCH"
     assert report["routes"][0]["evidence"] == "minimum endpoint shape did not pass"
+
+
+def test_e2a_probes_use_the_contract_fixture() -> None:
+    assert _probe("cmc_dex_platform_list").params == {}
+    assert _probe("cmc_dex_token_price").params == {
+        "platform": "Ethereum",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    }
