@@ -244,3 +244,21 @@ def test_dex_platform_detail_params_is_exactly_platform_name(platform: str) -> N
     assert list(params) == ["platformName"]
     assert params["platformName"] is platform  # passed through, never normalized
     assert "platform" not in params and "platform_name" not in params
+
+
+@pytest.mark.parametrize(
+    ("platform", "address"),
+    [("Ethereum", "0xA0b8"), ("eThErEuM", "0xaBc"), ("B² Network", "x" * 128), ("P", "A")],
+)
+def test_dex_holders_count_params_is_exactly_platform_then_token_address(
+    platform: str, address: str
+) -> None:
+    params = models.dex_holders_count_params(platform, address)
+    assert params == {"platform": platform, "tokenAddress": address}
+    assert list(params) == ["platform", "tokenAddress"]
+    assert params["platform"] is platform and params["tokenAddress"] is address
+    assert "address" not in params and "token_address" not in params
+
+
+def test_dex_holders_count_params_does_not_swap_values() -> None:
+    assert models.dex_holders_count_params("P", "A") == {"platform": "P", "tokenAddress": "A"}

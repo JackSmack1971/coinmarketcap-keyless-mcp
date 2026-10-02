@@ -34,6 +34,7 @@ from .models import (
     Timeframe,
     UniqueConversions,
     UniqueSymbols,
+    dex_holders_count_params,
     dex_platform_detail_params,
     dex_token_params,
     dex_token_price_params,
@@ -339,6 +340,12 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
     )
     async def cmc_dex_platform_detail(platform: DexPlatform) -> ProviderEnvelope:
         return await get(ROUTES["cmc_dex_platform_detail"], dex_platform_detail_params(platform))
+
+    @server.tool(name="cmc_dex_holders_count", description=_description("cmc_dex_holders_count"))
+    async def cmc_dex_holders_count(platform: DexPlatform, address: DexAddress) -> ProviderEnvelope:
+        return await get(
+            ROUTES["cmc_dex_holders_count"], dex_holders_count_params(platform, address)
+        )
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The
     # Phase 2 contract requires strict rejection, so tighten each registered

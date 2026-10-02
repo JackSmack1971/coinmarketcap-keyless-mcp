@@ -208,3 +208,12 @@ def dex_platform_detail_params(platform: str) -> dict[str, str]:
     """
 
     return {"platformName": platform}
+
+
+def dex_holders_count_params(platform: str, address: str) -> dict[str, str]:
+    """Build the exact DEX holder-count query: provider keys platform then tokenAddress.
+
+    The public argument ``address`` is sent as ``tokenAddress``; values pass through unchanged.
+    """
+
+    return {"platform": platform, "tokenAddress": address}

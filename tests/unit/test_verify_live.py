@@ -9,10 +9,11 @@ import pytest
 from coinmarketcap_keyless_mcp.client import KeylessHttpClient
 from coinmarketcap_keyless_mcp.contracts import BASE_URL, ROUTES
 from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
-from coinmarketcap_keyless_mcp.models import dex_platform_detail_params
+from coinmarketcap_keyless_mcp.models import dex_holders_count_params, dex_platform_detail_params
 from coinmarketcap_keyless_mcp.verify_live import (
     LIVE_MATRIX,
     CapabilityClassification,
+    _is_nonnegative_int,
     _shape_check,
     classify_error,
     verify_live,
@@ -64,6 +65,8 @@ VALID_DATA = {
     # Positive int id and non-empty string n only; pltA and other fields are optional
     # and n need not equal the requested platform name (case may differ).
     "cmc_dex_platform_detail": {"id": 1, "n": "ethereum"},
+    # Non-negative int count only; tokenAddress and platformId are optional.
+    "cmc_dex_holders_count": {"count": 0},
 }
 
 UNRELATED = {"ok": True}
@@ -204,6 +207,22 @@ INVALID_DATA = {
         {"id": 1, "n": ["Ethereum"]},
         {"id": 1, "pltA": "ETH"},
     ],
+    "cmc_dex_holders_count": [
+        {},
+        [],
+        [{"count": 5}],
+        "5",
+        5,
+        None,
+        {"tokenAddress": "0xA0b8", "platformId": 1},
+        {"count": -1},
+        {"count": True},
+        {"count": False},
+        {"count": 5.0},
+        {"count": "5"},
+        {"count": None},
+        {"platformId": 5, "tokenAddress": "0xA0b8"},
+    ],
     "cmc_dex_token_price": [
         {},
         [],
@@ -313,7 +332,7 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 22
+    assert len(report["routes"]) == 23
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -655,3 +674,50 @@ def test_e2c_shape_accepts_without_optional_fields_or_name_equality() -> None:
     shape = _probe("cmc_dex_platform_detail").shape
     assert _shape_check({"id": 14, "n": "ETHEREUM"}, shape)
     assert _shape_check({"id": 1, "n": "Ethereum", "pltA": "ETH", "dn": "12", "v": True}, shape)
+
+
+def test_e2d_probe_sends_token_address_under_the_provider_key() -> None:
+    probe = _probe("cmc_dex_holders_count")
+    assert probe.route == "/v1/dex/holders/count"
+    assert probe.shape == "dex_holders_count"
+    assert probe.params == {
+        "platform": "Ethereum",
+        "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    }
+    assert list(probe.params) == ["platform", "tokenAddress"]
+    assert "address" not in probe.params
+    # Tool arguments platform/address serialized exactly as the handler does.
+    assert probe.params == dex_holders_count_params(
+        "Ethereum", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    )
+    assert [p.tool for p in LIVE_MATRIX].count("cmc_dex_holders_count") == 1
+
+
+@pytest.mark.parametrize("count", [0, 1, 7, 2**63 - 1])
+def test_e2d_shape_accepts_zero_and_positive_count_without_optional_fields(count: int) -> None:
+    shape = _probe("cmc_dex_holders_count").shape
+    assert _shape_check({"count": count}, shape)
+    # tokenAddress need not equal the requested address; platformId is not interpreted.
+    assert _shape_check({"platformId": 0, "count": count, "tokenAddress": "other"}, shape)
+    assert _shape_check({"platformId": "x", "count": count, "tokenAddress": None}, shape)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, True),
+        (1, True),
+        (2**63 - 1, True),
+        (-1, False),
+        (True, False),
+        (False, False),
+        (0.0, False),
+        (1.0, False),
+        ("0", False),
+        ("5", False),
+        (None, False),
+        ([], False),
+    ],
+)
+def test_is_nonnegative_int_is_exact(value, expected: bool) -> None:
+    assert _is_nonnegative_int(value) is expected

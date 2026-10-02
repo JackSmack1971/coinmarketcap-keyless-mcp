@@ -136,6 +136,12 @@ _CONTRACTS = (
         "Get CoinMarketCap DEX detail for one blockchain platform identified by platform name; use platform-list to discover platform names.",
         "/v1/dex/platform/detail",
     ),
+    # v1.1 E2-D DEX holder count (verification/v1.1-e2d-contract-review.md).
+    ToolContract(
+        "cmc_dex_holders_count",
+        "Get the CoinMarketCap DEX holder count for one token identified by platform name and token contract address; use platform-list to discover platform names.",
+        "/v1/dex/holders/count",
+    ),
 )
 
 TOOL_CONTRACTS: Final[tuple[ToolContract, ...]] = _CONTRACTS

@@ -86,6 +86,13 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
     # E2-C contract review: tool argument platform="Ethereum" (observed live in E2-A),
     # sent as the provider query key platformName, as models.dex_platform_detail_params does.
     LiveProbe("cmc_dex_platform_detail", {"platformName": "Ethereum"}, "dex_platform_detail"),
+    # E2-D contract review: tool arguments platform/address (the D3/D4 identity), sent as
+    # the provider query keys platform and tokenAddress, as models.dex_holders_count_params does.
+    LiveProbe(
+        "cmc_dex_holders_count",
+        {"platform": "Ethereum", "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        "dex_holders_count",
+    ),
 )
 
 
@@ -134,6 +141,10 @@ def _is_nonempty_str(value: Any) -> bool:
 
 def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _is_priced(value: Any) -> bool:
@@ -316,6 +327,12 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
             and _is_nonempty_str(data.get("n"))
         ),
         lambda data: "DEX platform detail with id and name",
+    ),
+    # Documentation-derived minimum: count is a non-negative int (zero holders is valid);
+    # tokenAddress and platformId are not required and not compared with the request.
+    "dex_holders_count": (
+        lambda data: isinstance(data, Mapping) and _is_nonnegative_int(data.get("count")),
+        lambda data: "DEX holder count",
     ),
 }
 

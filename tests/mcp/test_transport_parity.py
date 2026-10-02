@@ -11,6 +11,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
+from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
 from coinmarketcap_keyless_mcp.runtime import run_server
 from coinmarketcap_keyless_mcp.server import create_server
 
@@ -27,7 +28,7 @@ async def test_in_process_surface_is_the_transport_parity_reference() -> None:
     async with Client(create_server(FixtureClient())) as client:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
-    assert len(tools.tools) == 22
+    assert len(tools.tools) == 23
 
 
 def _surface(tools) -> list[tuple[str, str | None, dict[str, Any]]]:
@@ -233,3 +234,99 @@ async def test_d12_discovery_and_results_match_across_in_process_and_streamable_
         with pytest.raises(asyncio.CancelledError):
             await task
     assert in_process == http
+
+
+# --- v1.1 E2-D D16 discovery and call-result parity (v1.1-e2d-contract-review.md) -----
+
+D16_CALLS = [
+    {"platform": "B² Network", "address": "0xAbC"},  # success, echoes the exact provider query
+    {"platform": "Ethereum", "address": "0xLIMIT"},  # upstream RATE_LIMITED
+    {"platform": "Ethereum", "address": "0xA0b8", "tokenAddress": "0xA0b8"},  # unknown field
+    {"platform": "Ethereum#x", "address": "0xA0b8"},  # query delimiter
+    {"platform": "Ethereum"},  # missing required address
+]
+
+
+def _d16_echo_code() -> str:
+    return """import asyncio
+from coinmarketcap_keyless_mcp import runtime
+from coinmarketcap_keyless_mcp.errors import CmcClientError, ErrorCode
+class EchoClient:
+    async def get(self, route, params=None):
+        if params and params.get("tokenAddress") == "0xLIMIT":
+            raise CmcClientError(ErrorCode.RATE_LIMITED, "limited", status_code=429, attempts=3)
+        return {"status": {"error_code": 0}, "data": {"route": route, "params": params}}
+asyncio.run(runtime.run_server("stdio", client_factory=EchoClient))
+"""
+
+
+class D16EchoClient:
+    async def get(self, route: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if params and params.get("tokenAddress") == "0xLIMIT":
+            raise CmcClientError(ErrorCode.RATE_LIMITED, "limited", status_code=429, attempts=3)
+        return {"status": {"error_code": 0}, "data": {"route": route, "params": params}}
+
+
+async def _d16_results(client: Client) -> list[tuple[Any, ...]]:
+    tool = {t.name: t for t in (await client.list_tools()).tools}["cmc_dex_holders_count"]
+    results: list[tuple[Any, ...]] = [(tool.name, tool.description, tool.input_schema)]
+    for arguments in D16_CALLS:
+        result = await client.call_tool("cmc_dex_holders_count", arguments)
+        text = result.content[0].text if result.is_error else None
+        results.append((result.is_error, result.structured_content, text))
+    return results
+
+
+def _assert_d16_reference(results: list[tuple[Any, ...]]) -> None:
+    assert results[1] == (
+        False,
+        {
+            "status": {"error_code": 0},
+            "data": {
+                "route": "/v1/dex/holders/count",
+                "params": {"platform": "B² Network", "tokenAddress": "0xAbC"},
+            },
+        },
+        None,
+    )
+    assert [result[0] for result in results[1:]] == [False, True, True, True, True]
+    assert "RATE_LIMITED" in results[2][2]
+
+
+@pytest.mark.asyncio
+async def test_d16_discovery_and_results_match_across_in_process_and_stdio() -> None:
+    async with Client(create_server(D16EchoClient())) as client:
+        in_process = await _d16_results(client)
+    params = StdioServerParameters(command=sys.executable, args=["-c", _d16_echo_code()])
+    async with Client(stdio_client(params)) as client:
+        stdio = await _d16_results(client)
+    assert in_process == stdio
+    _assert_d16_reference(in_process)
+
+
+@pytest.mark.streamable_http
+@pytest.mark.asyncio
+async def test_d16_discovery_and_results_match_across_in_process_and_streamable_http() -> None:
+    async with Client(create_server(D16EchoClient())) as client:
+        in_process = await _d16_results(client)
+
+    port = _free_port()
+    task = asyncio.create_task(
+        run_server("streamable-http", port=port, client_factory=D16EchoClient)
+    )
+    url = f"http://127.0.0.1:{port}/mcp"
+    for _ in range(50):
+        try:
+            async with streamable_http_client(url):
+                break
+        except Exception:
+            await asyncio.sleep(0.05)
+    try:
+        async with Client(streamable_http_client(url)) as client:
+            http = await _d16_results(client)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert in_process == http
+    _assert_d16_reference(in_process)
