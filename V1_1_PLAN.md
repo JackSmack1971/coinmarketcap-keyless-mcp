@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); E2-D (D16) contract approved (`E2D_CONTRACT_APPROVED`, 2026-10-02), implementation not started; v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); E2-D (D16) implemented and independently accepted (`E2D_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -190,7 +190,7 @@ E2-D is limited to D16 `cmc_dex_holders_count` (`GET /v1/dex/holders/count`). It
 
 The contract reuses the public `platform` + `address` arguments with E2-A's `DexPlatform` and `DexAddress` unchanged. A dedicated top-level helper serializes them as exactly `{"platform": <platform>, "tokenAddress": <address>}`. The cache TTL is 60 seconds. The provider envelope and `HolderCountVO` pass through unchanged, and the existing error taxonomy and 2 MiB cap apply. Current official documentation plus accepted E2-A/B identity evidence resolved the contract, so no live probe was made. The verifier minimum (a mapping whose `count` is a non-negative non-bool integer; zero valid) is documentation-derived, and live D16 verification is pending.
 
-**E2-D status: `E2D_CONTRACT_APPROVED` (2026-10-02) — D16 only; implementation not started.** Approval does not authorize D6, D8 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+**E2-D status: `E2D_ACCEPTED` (2026-10-02) — D16 only.** The amended contract (`E2D_CONTRACT_APPROVED`, `03567b0`) authorized implementation of D16 only. Implementation `58d8e87` passed the non-live gates (1003 tests), the mutation gate (93.5%; killed 1024, survived 71, timeout 3; all five automated `dex_holders_count_params` mutants killed) and twelve review-time hand mutations (all killed), with an independent implementation review recorded in `verification/v1.1-e2d-contract-review.md`. The D16 verifier shape remains documentation-derived and live D16 verification is pending. Acceptance does not authorize D6, D8 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 
