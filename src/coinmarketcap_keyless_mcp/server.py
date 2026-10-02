@@ -15,18 +15,24 @@ from .client import KeylessHttpClient
 from .contracts import ROUTES, TOOL_CONTRACTS
 from .errors import CmcClientError, ErrorCode
 from .models import (
+    CategoryId,
+    ConversionAmount,
+    ExchangeSort,
     Ids,
     IndexInterval,
     ListingSort,
     ListingStatus,
+    ListToken,
     MapSort,
     ProviderEnvelope,
     Slugs,
     SortDirection,
+    StrictPositiveInt,
     Symbols,
     Timeframe,
     UniqueConversions,
     UniqueSymbols,
+    price_conversion_params,
     require_exactly_one_selector,
     require_unique,
     validate_time_bounds,
@@ -78,7 +84,7 @@ def _index_history_params(
 
 
 def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
-    """Create the high-level MCP server with the exact 13-tool contract."""
+    """Create the high-level MCP server with the exact 18-tool contract."""
 
     upstream = client if client is not None else KeylessHttpClient()
     server = MCPServer("coinmarketcap-keyless-mcp", version=version("coinmarketcap-keyless-mcp"))
@@ -242,6 +248,73 @@ def create_server(client: KeylessHttpClient | None = None) -> MCPServer:
         return await get(
             ROUTES["cmc_cmc20_historical"],
             _index_history_params(time_start, time_end, count, interval),
+        )
+
+    @server.tool(name="cmc_simple_price", description=_description("cmc_simple_price"))
+    async def cmc_simple_price(
+        ids: Ids = Field(default_factory=list),
+        slugs: Slugs = Field(default_factory=list),
+        symbols: Symbols = Field(default_factory=list),
+        convert: UniqueConversions = Field(default=["USD"]),
+    ) -> ProviderEnvelope:
+        with _invalid_argument():
+            name, values = require_exactly_one_selector(ids=ids, slugs=slugs, symbols=symbols)
+            require_unique(convert, "convert")
+        key, value = _query_selector(name, values)
+        return await get(ROUTES["cmc_simple_price"], {key: value, "convert": ",".join(convert)})
+
+    @server.tool(name="cmc_crypto_categories", description=_description("cmc_crypto_categories"))
+    async def cmc_crypto_categories(
+        start: StrictPositiveInt = 1,
+        limit: StrictPositiveInt = Field(default=100, le=100),
+    ) -> ProviderEnvelope:
+        return await get(ROUTES["cmc_crypto_categories"], {"start": start, "limit": limit})
+
+    @server.tool(name="cmc_crypto_category", description=_description("cmc_crypto_category"))
+    async def cmc_crypto_category(
+        id: CategoryId,
+        start: StrictPositiveInt = 1,
+        limit: StrictPositiveInt = Field(default=100, le=100),
+        convert: UniqueConversions = Field(default=["USD"]),
+    ) -> ProviderEnvelope:
+        with _invalid_argument():
+            require_unique(convert, "convert")
+        return await get(
+            ROUTES["cmc_crypto_category"],
+            {"id": id, "start": start, "limit": limit, "convert": ",".join(convert)},
+        )
+
+    @server.tool(name="cmc_price_conversion", description=_description("cmc_price_conversion"))
+    async def cmc_price_conversion(
+        amount: ConversionAmount,
+        id: StrictPositiveInt | None = None,
+        symbol: ListToken | None = None,
+        convert: ListToken | None = None,
+        convert_id: StrictPositiveInt | None = None,
+    ) -> ProviderEnvelope:
+        with _invalid_argument():
+            params = price_conversion_params(amount, id, symbol, convert, convert_id)
+        return await get(ROUTES["cmc_price_conversion"], params)
+
+    @server.tool(name="cmc_exchange_map", description=_description("cmc_exchange_map"))
+    async def cmc_exchange_map(
+        listing_status: list[ListingStatus] = Field(
+            default=["active"], min_length=1, json_schema_extra={"uniqueItems": True}
+        ),
+        start: StrictPositiveInt = 1,
+        limit: StrictPositiveInt = Field(default=100, le=500),
+        sort: ExchangeSort = "id",
+    ) -> ProviderEnvelope:
+        with _invalid_argument():
+            require_unique(listing_status, "listing_status")
+        return await get(
+            ROUTES["cmc_exchange_map"],
+            {
+                "listing_status": ",".join(listing_status),
+                "start": start,
+                "limit": limit,
+                "sort": sort,
+            },
         )
 
     # MCP v2's high-level argument base defaults to ignoring extra fields. The

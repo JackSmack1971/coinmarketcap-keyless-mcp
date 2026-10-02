@@ -90,6 +90,11 @@ CACHE_TTLS_BY_ROUTE: Final[Mapping[str, float]] = MappingProxyType(
         ROUTES["cmc_cmc100_historical"]: 300.0,
         ROUTES["cmc_cmc20_latest"]: 300.0,
         ROUTES["cmc_cmc20_historical"]: 300.0,
+        ROUTES["cmc_simple_price"]: 30.0,
+        ROUTES["cmc_crypto_categories"]: 300.0,
+        ROUTES["cmc_crypto_category"]: 300.0,
+        ROUTES["cmc_price_conversion"]: 30.0,
+        ROUTES["cmc_exchange_map"]: 300.0,
     }
 )
 DEFAULT_MAX_CONCURRENCY: Final = 2

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from decimal import Decimal
 from math import isfinite
 from typing import Annotated, Any, Literal, TypedDict, TypeVar
 
@@ -20,8 +21,9 @@ class ProviderEnvelope(TypedDict):
 # Provider list parameters are comma-joined, so items must not contain separators.
 ListToken = Annotated[str, StringConstraints(pattern=r"^[^,\s]+$", min_length=1, max_length=64)]
 
+# Strict items: the published schema is "type": "integer", which JSON booleans are not.
 Ids = Annotated[
-    list[Annotated[int, Field(ge=1)]],
+    list[Annotated[int, Field(strict=True, ge=1)]],
     Field(min_length=1, max_length=100, json_schema_extra={"uniqueItems": True}),
 ]
 Slugs = Annotated[
@@ -74,6 +76,14 @@ SortDirection = Literal["asc", "desc"]
 Timeframe = Literal["7d", "30d", "90d"]
 IndexInterval = Literal["5m", "15m", "daily"]
 
+# v1.1 E1-R building blocks. Strict integers reject booleans and numeric strings.
+StrictPositiveInt = Annotated[int, Field(strict=True, ge=1)]
+CategoryId = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z0-9]+$", min_length=1, max_length=64)
+]
+ConversionAmount = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1e-8, le=1e12)]
+ExchangeSort = Literal["id", "volume_24h"]
+
 
 def require_exactly_one_selector(**selectors: list[T] | None) -> tuple[str, list[T]]:
     present = [(name, values) for name, values in selectors.items() if values]
@@ -116,3 +126,41 @@ def validate_time_bounds(time_start: str | None, time_end: str | None) -> None:
     end = validate_time(time_end, "time_end")
     if start is not None and end is not None and start > end:
         raise ValueError("time_start must be less than or equal to time_end")
+
+
+def plain_decimal(amount: float) -> str:
+    """Render a finite amount as a plain decimal string, never in exponent notation."""
+
+    text = format(Decimal(repr(float(amount))), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def price_conversion_params(
+    amount: float,
+    id: int | None,
+    symbol: str | None,
+    convert: str | None,
+    convert_id: int | None,
+) -> dict[str, str | int]:
+    """Validate the price-conversion source/target rules and build its exact query.
+
+    USD is the handler default only when neither target is supplied; it is not a
+    schema default.
+    """
+
+    if (id is None) == (symbol is None):
+        raise ValueError("exactly one of id or symbol must be supplied")
+    if convert is not None and convert_id is not None:
+        raise ValueError("at most one of convert or convert_id may be supplied")
+    params: dict[str, str | int] = {"amount": plain_decimal(amount)}
+    if id is not None:
+        params["id"] = id
+    else:
+        params["symbol"] = symbol  # type: ignore[assignment]
+    if convert_id is not None:
+        params["convert_id"] = convert_id
+    else:
+        params["convert"] = convert if convert is not None else "USD"
+    return params
