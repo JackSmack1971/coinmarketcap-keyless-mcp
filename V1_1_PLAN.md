@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); E2-D (D16) implemented and independently accepted (`E2D_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); E2-C (D12) implemented and independently accepted (`E2C_ACCEPTED`, 2026-10-02); E2-D (D16) implemented and independently accepted (`E2D_ACCEPTED`, 2026-10-02); E2-E (D8) implemented and independently accepted (`E2E_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -198,7 +198,7 @@ E2-E is limited to D8 `cmc_dex_security_detail` (`GET /v1/dex/security/detail`).
 
 The contract reuses the public `platform` + `address` arguments with E2-A's `DexPlatform` and `DexAddress` unchanged. A dedicated top-level helper serializes them as exactly `{"platformName": <platform>, "address": <address>}`. The cache TTL is 300 seconds. The provider envelope and the `TokenSecurityResponseDTO[]` array pass through unchanged, with no risk scoring, filtering, coercion or interpretation. The existing error taxonomy and 2 MiB cap apply. Current official documentation plus accepted E2-A/B/C identity evidence resolved the contract, so no live probe was made. The verifier minimum is that `data` is a list whose elements are all mappings. An empty array is valid and no field is required. This minimum is documentation-derived, and live D8 verification is pending. Verifier logic stays in `verify_live.py` and is pinned by focused tests and hand mutations, with no mutmut configuration change.
 
-**E2-E status: `E2E_CONTRACT_APPROVED` (2026-10-02) — D8 only; implementation not started.** This approval does not authorize D6 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+**E2-E status: `E2E_ACCEPTED` (2026-10-02) — D8 only.** The contract (`E2E_CONTRACT_APPROVED`) authorized D8 only; the implementation (`045812c`) passed the non-live gates, the mutation gate (93.6%, all `dex_security_detail_params` mutants killed) and an independent implementation review recorded in `verification/v1.1-e2e-contract-review.md`. Live D8 verification is pending. Acceptance does not authorize D6 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 
