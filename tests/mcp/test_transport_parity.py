@@ -27,7 +27,7 @@ async def test_in_process_surface_is_the_transport_parity_reference() -> None:
     async with Client(create_server(FixtureClient())) as client:
         tools = await client.list_tools()
     assert [tool.name for tool in tools.tools] == NAMES
-    assert len(tools.tools) == 20
+    assert len(tools.tools) == 21
 
 
 def _surface(tools) -> list[tuple[str, str | None, dict[str, Any]]]:
@@ -90,3 +90,81 @@ async def test_streamable_http_tool_names_match_in_process() -> None:
 
     assert in_process == http
     assert [name for name, _, _ in http] == NAMES
+
+
+# --- v1.1 E2-B D3 call-result parity (verification/v1.1-e2b-contract-review.md) -------
+
+D3_CALLS = [
+    {"platform": "B² Network", "address": "0xAbC"},  # success, echoes the exact query
+    {"platform": "Ethereum", "address": "0xA0b8", "network_slug": "x"},  # unknown field
+    {"platform": "Ethereum&x=1", "address": "0xA0b8"},  # query delimiter
+]
+
+
+class EchoClient:
+    async def get(self, route: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {"status": {"error_code": 0}, "data": {"route": route, "params": params}}
+
+
+def _echo_code() -> str:
+    return """import asyncio
+from coinmarketcap_keyless_mcp import runtime
+class EchoClient:
+    async def get(self, route, params=None):
+        return {"status": {"error_code": 0}, "data": {"route": route, "params": params}}
+asyncio.run(runtime.run_server("stdio", client_factory=EchoClient))
+"""
+
+
+async def _d3_results(client: Client) -> list[tuple[bool, Any]]:
+    results = []
+    for arguments in D3_CALLS:
+        result = await client.call_tool("cmc_dex_token", arguments)
+        results.append((result.is_error, result.structured_content))
+    return results
+
+
+@pytest.mark.asyncio
+async def test_d3_call_results_match_across_in_process_and_stdio() -> None:
+    async with Client(create_server(EchoClient())) as client:
+        in_process = await _d3_results(client)
+    params = StdioServerParameters(command=sys.executable, args=["-c", _echo_code()])
+    async with Client(stdio_client(params)) as client:
+        stdio = await _d3_results(client)
+    assert in_process == stdio
+    assert in_process[0] == (
+        False,
+        {
+            "status": {"error_code": 0},
+            "data": {
+                "route": "/v1/dex/token",
+                "params": {"platform": "B² Network", "address": "0xAbC"},
+            },
+        },
+    )
+    assert [is_error for is_error, _ in in_process] == [False, True, True]
+
+
+@pytest.mark.streamable_http
+@pytest.mark.asyncio
+async def test_d3_call_results_match_across_in_process_and_streamable_http() -> None:
+    async with Client(create_server(EchoClient())) as client:
+        in_process = await _d3_results(client)
+
+    port = _free_port()
+    task = asyncio.create_task(run_server("streamable-http", port=port, client_factory=EchoClient))
+    url = f"http://127.0.0.1:{port}/mcp"
+    for _ in range(50):
+        try:
+            async with streamable_http_client(url):
+                break
+        except Exception:
+            await asyncio.sleep(0.05)
+    try:
+        async with Client(streamable_http_client(url)) as client:
+            http = await _d3_results(client)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert in_process == http

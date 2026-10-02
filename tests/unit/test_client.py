@@ -67,8 +67,9 @@ def test_e1r_cache_ttls_are_pinned_and_cover_every_route() -> None:
     assert CACHE_TTLS_BY_ROUTE[ROUTES["cmc_exchange_map"]] == 300
     assert CACHE_TTLS_BY_ROUTE[ROUTES["cmc_dex_platform_list"]] == 900
     assert CACHE_TTLS_BY_ROUTE[ROUTES["cmc_dex_token_price"]] == 15
+    assert CACHE_TTLS_BY_ROUTE[ROUTES["cmc_dex_token"]] == 15
     assert set(CACHE_TTLS_BY_ROUTE) == set(ROUTES.values())
-    assert len(CACHE_TTLS_BY_ROUTE) == 20
+    assert len(CACHE_TTLS_BY_ROUTE) == 21
 
 
 @pytest.mark.parametrize(

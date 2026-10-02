@@ -97,6 +97,7 @@ CACHE_TTLS_BY_ROUTE: Final[Mapping[str, float]] = MappingProxyType(
         ROUTES["cmc_exchange_map"]: 300.0,
         ROUTES["cmc_dex_platform_list"]: 900.0,
         ROUTES["cmc_dex_token_price"]: 15.0,
+        ROUTES["cmc_dex_token"]: 15.0,
     }
 )
 DEFAULT_MAX_CONCURRENCY: Final = 2

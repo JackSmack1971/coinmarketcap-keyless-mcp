@@ -124,6 +124,12 @@ _CONTRACTS = (
         "Get current CoinMarketCap DEX price data for one token identified by platform name and token contract address; use platform-list to discover platform names.",
         "/v1/dex/token/price",
     ),
+    # v1.1 E2-B DEX token detail (verification/v1.1-e2b-contract-review.md).
+    ToolContract(
+        "cmc_dex_token",
+        "Get CoinMarketCap DEX token detail (metadata, market, liquidity and pool fields) for one token identified by platform name and token contract address; use platform-list to discover platform names.",
+        "/v1/dex/token",
+    ),
 )
 
 TOOL_CONTRACTS: Final[tuple[ToolContract, ...]] = _CONTRACTS

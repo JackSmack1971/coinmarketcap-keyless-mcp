@@ -190,3 +190,12 @@ def dex_token_price_params(platform: str, address: str) -> dict[str, str]:
     """
 
     return {"platform": platform, "address": address}
+
+
+def dex_token_params(platform: str, address: str) -> dict[str, str]:
+    """Build the exact DEX token-detail query: provider keys platform then address.
+
+    Values are passed through unchanged; case is never normalized.
+    """
+
+    return {"platform": platform, "address": address}

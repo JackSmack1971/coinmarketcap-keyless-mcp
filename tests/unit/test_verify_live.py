@@ -57,6 +57,9 @@ VALID_DATA = {
         {"id": 2, "n": "B² Network"},  # pltA may be absent
     ],
     "cmc_dex_token_price": {"p": 0.9998, "pid": 1, "a": "0xA0b86991"},
+    # Only a non-empty string addr is required; n/sym/plt and market fields are optional
+    # and addr need not equal the requested address (case may differ).
+    "cmc_dex_token": {"addr": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},
 }
 
 UNRELATED = {"ok": True}
@@ -163,6 +166,18 @@ INVALID_DATA = {
         [{"id": 1, "n": ""}],
         [{"id": 1, "n": 5}],
         [{"id": 1, "n": "Ethereum"}, {"id": 2}],
+    ],
+    "cmc_dex_token": [
+        {},
+        [],
+        [{"addr": "0xA0b8"}],
+        "0xA0b8",
+        {"n": "USD Coin", "sym": "USDC", "plt": "Ethereum", "p": "1.0"},
+        {"addr": ""},
+        {"addr": None},
+        {"addr": 1},
+        {"addr": ["0xA0b8"]},
+        {"addr": {"v": "0xA0b8"}},
     ],
     "cmc_dex_token_price": [
         {},
@@ -273,7 +288,7 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 20
+    assert len(report["routes"]) == 21
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -590,3 +605,13 @@ def test_e2a_probes_use_the_contract_fixture() -> None:
         "platform": "Ethereum",
         "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     }
+
+
+def test_e2b_probe_uses_the_contract_fixture_and_minimum_shape() -> None:
+    probe = _probe("cmc_dex_token")
+    assert probe.route == "/v1/dex/token"
+    assert probe.params == {
+        "platform": "Ethereum",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    }
+    assert [p.tool for p in LIVE_MATRIX].count("cmc_dex_token") == 1

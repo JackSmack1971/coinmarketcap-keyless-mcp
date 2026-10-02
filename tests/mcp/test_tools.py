@@ -41,6 +41,7 @@ CALL_ARGS = {
     "cmc_exchange_map": {},
     "cmc_dex_platform_list": {},
     "cmc_dex_token_price": {"platform": "Ethereum", "address": "0xA0b86991"},
+    "cmc_dex_token": {"platform": "Ethereum", "address": "0xA0b86991"},
 }
 
 
@@ -666,8 +667,8 @@ E2A_SCHEMAS = {
 async def test_e2a_discovered_schemas_are_exact_and_earlier_tools_unchanged() -> None:
     async with Client(create_server(RecordingClient())) as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
-    assert len(tools) == 20
-    assert list(tools)[18:] == E2A_NAMES
+    assert len(tools) == 21
+    assert list(tools)[18:20] == E2A_NAMES
     for name in E2A_NAMES:
         assert tools[name].input_schema == E2A_SCHEMAS[name]
     for name in E1R_NAMES:

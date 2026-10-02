@@ -77,6 +77,12 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
         {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
         "dex_token_price",
     ),
+    # E2-B contract review: same Ethereum USDC fixture as D4.
+    LiveProbe(
+        "cmc_dex_token",
+        {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        "dex_token",
+    ),
 )
 
 
@@ -289,6 +295,14 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
     "dex_token_price": (
         lambda data: isinstance(data, Mapping) and bool(data) and _is_number(data.get("p")),
         lambda data: "DEX token price with numeric p",
+    ),
+    # Documentation-derived minimum: addr is not compared with the requested address
+    # (case may differ) and n/sym/plt/market fields are not required.
+    "dex_token": (
+        lambda data: (
+            isinstance(data, Mapping) and bool(data) and _is_nonempty_str(data.get("addr"))
+        ),
+        lambda data: "DEX token detail with addr",
     ),
 }
 
