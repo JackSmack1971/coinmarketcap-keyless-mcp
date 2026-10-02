@@ -59,6 +59,24 @@ LIVE_MATRIX: tuple[LiveProbe, ...] = (
     LiveProbe("cmc_cmc100_historical", {"count": 2, "interval": "daily"}, "index_history"),
     LiveProbe("cmc_cmc20_latest", {}, "index_latest"),
     LiveProbe("cmc_cmc20_historical", {"count": 2, "interval": "daily"}, "index_history"),
+    LiveProbe("cmc_simple_price", {"id": "1", "convert": "USD"}, "simple_price_list"),
+    LiveProbe("cmc_crypto_categories", {"start": 1, "limit": 1}, "category_list"),
+    # The category id is provider-owned, so it is read from the categories route
+    # (the preceding probe's result when available) instead of being hard-coded.
+    LiveProbe(
+        "cmc_crypto_category", {"start": 1, "limit": 1, "convert": "USD"}, "category_results"
+    ),
+    LiveProbe(
+        "cmc_price_conversion", {"amount": "1", "id": 1, "convert": "USD"}, "price_conversion"
+    ),
+    LiveProbe("cmc_exchange_map", {"start": 1, "limit": 2}, "exchange_list"),
+    LiveProbe("cmc_dex_platform_list", {}, "dex_platform_list"),
+    # Deterministic fixture from the E2-A contract review: Ethereum USDC.
+    LiveProbe(
+        "cmc_dex_token_price",
+        {"platform": "Ethereum", "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+        "dex_token_price",
+    ),
 )
 
 
@@ -99,6 +117,35 @@ def _is_valued_point(value: Any) -> bool:
     """A mapping whose headline "value" is a finite number (fear/greed and index points)."""
 
     return isinstance(value, Mapping) and _is_number(value.get("value"))
+
+
+def _is_nonempty_str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _is_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_priced(value: Any) -> bool:
+    return isinstance(value, Mapping) and _is_number(value.get("price"))
+
+
+def _is_simple_price(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and _is_positive_int(value.get("id"))
+        and isinstance(value.get("quotes"), list)
+        and any(_is_priced(quote) for quote in value["quotes"])
+    )
+
+
+def _is_category_object(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and _is_nonempty_str(value.get("id"))
+        and isinstance(value.get("coins"), list)
+    )
 
 
 def _index_history_points(data: Any) -> Any:
@@ -181,7 +228,122 @@ _SHAPES: dict[str, tuple[Callable[[Any], bool], Callable[[Any], str]]] = {
             "index history with values; result count=%d" % len(_index_history_points(data))
         ),
     ),
+    "simple_price_list": (
+        lambda data: _nonempty_list_of(data, _is_simple_price),
+        lambda data: "simple price list with ids and priced quotes; result count=%d" % len(data),
+    ),
+    "category_list": (
+        lambda data: _nonempty_list_of(
+            data,
+            lambda item: (
+                isinstance(item, Mapping)
+                and _is_nonempty_str(item.get("id"))
+                and _is_nonempty_str(item.get("name"))
+            ),
+        ),
+        lambda data: "category list with ids and names; result count=%d" % len(data),
+    ),
+    # data is a provider-owned results map; its keys are not interpreted (C2).
+    "category_results": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and bool(data)
+            and any(_is_category_object(item) for item in data.values())
+        ),
+        lambda data: "category results map with id and coins; result count=%d" % len(data),
+    ),
+    "price_conversion": (
+        lambda data: (
+            isinstance(data, Mapping)
+            and _is_number(data.get("amount"))
+            and isinstance(data.get("quote"), Mapping)
+            and bool(data["quote"])
+            and any(_is_priced(quote) for quote in data["quote"].values())
+        ),
+        lambda data: "conversion amount with priced quote; quote count=%d" % len(data["quote"]),
+    ),
+    "exchange_list": (
+        lambda data: _nonempty_list_of(
+            data,
+            lambda item: (
+                isinstance(item, Mapping)
+                and _is_positive_int(item.get("id"))
+                and _is_nonempty_str(item.get("slug"))
+            ),
+        ),
+        lambda data: "exchange list with ids and slugs; result count=%d" % len(data),
+    ),
+    # pltA is not required: live evidence showed some platform records omit it.
+    "dex_platform_list": (
+        lambda data: _nonempty_list_of(
+            data,
+            lambda item: (
+                isinstance(item, Mapping)
+                and isinstance(item.get("id"), int)
+                and not isinstance(item.get("id"), bool)
+                and _is_nonempty_str(item.get("n"))
+            ),
+        ),
+        lambda data: "DEX platform list with ids and names; result count=%d" % len(data),
+    ),
+    "dex_token_price": (
+        lambda data: isinstance(data, Mapping) and bool(data) and _is_number(data.get("p")),
+        lambda data: "DEX token price with numeric p",
+    ),
 }
+
+
+def _first_category_id(data: Any) -> str | None:
+    if isinstance(data, list) and data and isinstance(data[0], Mapping):
+        category_id = data[0].get("id")
+        if _is_nonempty_str(category_id):
+            return category_id
+    return None
+
+
+class _PrerequisiteFailed(Exception):
+    """The category-id lookup failed, so the category route itself was never called.
+
+    Evidence for the category probe must not borrow the lookup route's HTTP status,
+    and a lookup failure is never proof of a category-route contract mismatch.
+    """
+
+    def __init__(self, classification: CapabilityClassification, detail: str) -> None:
+        super().__init__(detail)
+        self.classification = classification
+        self.detail = detail
+
+
+_LOOKUP = "category id lookup on " + ROUTES["cmc_crypto_categories"]
+_NOT_CALLED = ROUTES["cmc_crypto_category"] + " was not called"
+
+
+async def _probe_params(
+    client: KeylessHttpClient, probe: LiveProbe, category_id: str | None
+) -> Mapping[str, Any]:
+    if probe.tool != "cmc_crypto_category":
+        return probe.params
+    if category_id is None:
+        try:
+            listing = await client.get(ROUTES["cmc_crypto_categories"], {"start": 1, "limit": 1})
+        except CmcClientError as exc:
+            # Only a 429 carries over; any other lookup outcome (including the
+            # lookup route's own contract mismatch) says nothing about S3.
+            classification = (
+                CapabilityClassification.RATE_LIMITED
+                if exc.code is ErrorCode.RATE_LIMITED
+                else CapabilityClassification.TRANSIENT_ERROR
+            )
+            raise _PrerequisiteFailed(
+                classification, f"{_LOOKUP} failed ({exc.code.value}); {_NOT_CALLED}"
+            ) from exc
+        category_id = _first_category_id(listing.get("data"))
+    if category_id is None:
+        raise _PrerequisiteFailed(
+            CapabilityClassification.TRANSIENT_ERROR,
+            f"{_LOOKUP} returned no category id; {_NOT_CALLED}",
+        )
+    return {"id": category_id, **probe.params}
 
 
 def _shape_check(data: Any, shape: str) -> str:
@@ -250,12 +412,16 @@ async def verify_live(
     if unknown:
         raise ValueError("unknown tool(s): " + ", ".join(sorted(unknown)))
     routes: list[RouteEvidence] = []
+    category_id: str | None = None
     async with client_factory() as client:
         for probe in selected:
             started = time.monotonic()
             try:
-                payload = await client.get(probe.route, probe.params)
+                params = await _probe_params(client, probe, category_id)
+                payload = await client.get(probe.route, params)
                 evidence = _shape_check(payload.get("data"), probe.shape)
+                if probe.tool == "cmc_crypto_categories":
+                    category_id = _first_category_id(payload.get("data"))
                 routes.append(
                     RouteEvidence(
                         probe.tool,
@@ -266,6 +432,19 @@ async def verify_live(
                         getattr(client, "_last_attempts", 1),
                         int((time.monotonic() - started) * 1000),
                         evidence,
+                    )
+                )
+            except _PrerequisiteFailed as exc:
+                routes.append(
+                    RouteEvidence(
+                        probe.tool,
+                        probe.route,
+                        exc.classification.value,
+                        None,
+                        None,
+                        0,
+                        int((time.monotonic() - started) * 1000),
+                        exc.detail,
                     )
                 )
             except ValueError as exc:

@@ -87,6 +87,43 @@ _CONTRACTS = (
         "Get historical CoinMarketCap 20 Index values at a provider-supported interval.",
         "/v3/index/cmc20-historical",
     ),
+    # v1.1 E1-R Standard additions (verification/v1.1-e1r-contract-review.md).
+    ToolContract(
+        "cmc_simple_price",
+        "Get the latest simple CoinMarketCap price for a known set of cryptocurrencies, selected by exactly one of ids, slugs, or symbols. Prefer CMC IDs over symbols when identity ambiguity matters.",
+        "/v2/simple/price",
+    ),
+    ToolContract(
+        "cmc_crypto_categories",
+        "Get a paginated list of CoinMarketCap cryptocurrency categories with their category IDs. Use cmc_crypto_category to fetch one category's coins.",
+        "/v1/cryptocurrency/categories",
+    ),
+    ToolContract(
+        "cmc_crypto_category",
+        "Get one CoinMarketCap cryptocurrency category and a paginated page of its coins with market quotes. Obtain category IDs from cmc_crypto_categories.",
+        "/v1/cryptocurrency/category",
+    ),
+    ToolContract(
+        "cmc_price_conversion",
+        "Convert an amount of one source cryptocurrency, identified by exactly one of id or symbol, into exactly one target currency, identified by exactly one of convert or convert_id (USD if neither is given).",
+        "/v2/tools/price-conversion",
+    ),
+    ToolContract(
+        "cmc_exchange_map",
+        "Resolve CoinMarketCap exchange IDs and slugs, paginated and filterable by listing status.",
+        "/v1/exchange/map",
+    ),
+    # v1.1 E2-A DEX identity foundation (verification/v1.1-e2a-contract-review.md).
+    ToolContract(
+        "cmc_dex_platform_list",
+        "Get the list of blockchain platforms supported by CoinMarketCap DEX data; use it to discover platform names accepted by DEX tools.",
+        "/v1/dex/platform/list",
+    ),
+    ToolContract(
+        "cmc_dex_token_price",
+        "Get current CoinMarketCap DEX price data for one token identified by platform name and token contract address; use platform-list to discover platform names.",
+        "/v1/dex/token/price",
+    ),
 )
 
 TOOL_CONTRACTS: Final[tuple[ToolContract, ...]] = _CONTRACTS

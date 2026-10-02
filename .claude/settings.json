@@ -17,12 +17,12 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch --show-current)",
-      "Bash(git worktree list)"
-    ],
-    "ask": [
+      "Bash(git worktree list)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)",
+      "Bash(git push:*)"
+    ],
+    "ask": [
       "Bash(uv run python -m coinmarketcap_keyless_mcp.verify_live:*)",
       "Bash(uv run mutmut:*)",
       "Bash(gh workflow run:*)",

@@ -47,6 +47,16 @@ VALID_DATA = {
     "cmc_cmc100_historical": [{"value": 210.1, "update_time": "t", "constituents": []}],
     "cmc_cmc20_latest": {"value": 160.2, "constituents": _CONSTITUENTS},
     "cmc_cmc20_historical": {"values": [{"value": 158.3, "update_time": "t"}]},
+    "cmc_simple_price": [{"id": 1, "quotes": [{"symbol": "USD", "price": 63120.95}]}],
+    "cmc_crypto_categories": [{"id": "605e2ce9d41eae1066535f7c", "name": "A16Z Portfolio"}],
+    "cmc_crypto_category": {"1": {"id": "605e2ce9d41eae1066535f7c", "coins": [_QUOTED]}},
+    "cmc_price_conversion": {"amount": 1, "quote": {"USD": {"price": 63120.95}}},
+    "cmc_exchange_map": [{"id": 270, "slug": "binance", "name": "Binance"}],
+    "cmc_dex_platform_list": [
+        {"id": 1, "n": "Ethereum", "pltA": "ETH"},
+        {"id": 2, "n": "B² Network"},  # pltA may be absent
+    ],
+    "cmc_dex_token_price": {"p": 0.9998, "pid": 1, "a": "0xA0b86991"},
 }
 
 UNRELATED = {"ok": True}
@@ -97,6 +107,83 @@ INVALID_DATA = {
     ],
     "cmc_cmc20_latest": [UNRELATED, {"constituents": _CONSTITUENTS}],
     "cmc_cmc20_historical": [[{"value": "1"}], {"values": [UNRELATED]}, UNRELATED],
+    "cmc_simple_price": [
+        [],
+        UNRELATED,
+        [{"id": True, "quotes": [{"price": 1.0}]}],
+        [{"id": 0, "quotes": [{"price": 1.0}]}],
+        [{"id": "1", "quotes": [{"price": 1.0}]}],
+        [{"id": 1, "quotes": []}],
+        [{"id": 1}],
+        [{"id": 1, "quotes": {"USD": {"price": 1.0}}}],
+        [{"id": 1, "quotes": [{"price": True}]}],
+        [{"id": 1, "quotes": [{"price": float("nan")}]}],
+        [{"id": 1, "quotes": [{"price": "1.0"}]}],
+    ],
+    "cmc_crypto_categories": [
+        [],
+        UNRELATED,
+        [{"id": "", "name": "x"}],
+        [{"id": 1, "name": "x"}],
+        [{"id": "a"}],
+        [{"id": "a", "name": ""}],
+    ],
+    "cmc_crypto_category": [
+        {},
+        [],
+        {"1": "category"},
+        {"1": []},
+        {"1": {"coins": []}},
+        {"1": {"id": "", "coins": []}},
+        {"1": {"id": 605, "coins": []}},
+        {"1": {"id": "605e", "coins": {}}},
+        {"1": {"id": "605e"}},
+        {"id": "605e", "coins": []},
+    ],
+    "cmc_price_conversion": [
+        UNRELATED,
+        [],
+        {"amount": True, "quote": {"USD": {"price": 1.0}}},
+        {"amount": float("nan"), "quote": {"USD": {"price": 1.0}}},
+        {"amount": "1", "quote": {"USD": {"price": 1.0}}},
+        {"amount": 1, "quote": {}},
+        {"amount": 1, "quote": {"USD": {"price": True}}},
+        {"amount": 1, "quote": {"USD": UNRELATED}},
+        {"amount": 1},
+    ],
+    "cmc_dex_platform_list": [
+        [],
+        UNRELATED,
+        ["Ethereum"],
+        [{"n": "Ethereum"}],
+        [{"id": True, "n": "Ethereum"}],
+        [{"id": "1", "n": "Ethereum"}],
+        [{"id": 1.0, "n": "Ethereum"}],
+        [{"id": 1}],
+        [{"id": 1, "n": ""}],
+        [{"id": 1, "n": 5}],
+        [{"id": 1, "n": "Ethereum"}, {"id": 2}],
+    ],
+    "cmc_dex_token_price": [
+        {},
+        [],
+        [{"p": 1.0}],
+        {"pid": 1},
+        {"p": True},
+        {"p": "1.0"},
+        {"p": None},
+        {"p": float("nan")},
+        {"p": float("inf")},
+    ],
+    "cmc_exchange_map": [
+        [],
+        UNRELATED,
+        [{"id": True, "slug": "binance"}],
+        [{"id": 0, "slug": "binance"}],
+        [{"id": "270", "slug": "binance"}],
+        [{"id": 270, "slug": ""}],
+        [{"id": 270}],
+    ],
 }
 
 
@@ -121,7 +208,7 @@ def test_unrelated_or_mistyped_data_fails_minimum_shape(tool: str, data) -> None
         _shape_check(data, _probe(tool).shape)
 
 
-def test_matrix_contains_exactly_thirteen_routes_and_minimal_queries() -> None:
+def test_matrix_contains_exactly_twenty_routes_and_minimal_queries() -> None:
     assert [probe.tool for probe in LIVE_MATRIX] == list(ROUTES)
     assert LIVE_MATRIX[0].params == {"symbol": "BTC"}
     assert LIVE_MATRIX[2].params == {"id": "1,1027", "convert": "USD"}
@@ -178,13 +265,15 @@ async def test_verification_is_serial_exact_route_get_and_no_auth() -> None:
         assert "x-cmc_pro_api_key" not in request.headers
         assert "authorization" not in request.headers
         active -= 1
+        if request.url.path.endswith(ROUTES["cmc_crypto_categories"]):
+            return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_categories"]))
         return httpx.Response(200, json=_envelope({"ok": True}))
 
     async with KeylessHttpClient(
         _transport=httpx.MockTransport(handler), cache_enabled=False, max_concurrency=1
     ) as client:
         report = await verify_live(client_factory=lambda: client)
-    assert len(report["routes"]) == 13
+    assert len(report["routes"]) == 20
     assert [item["route"] for item in report["routes"]] == [probe.route for probe in LIVE_MATRIX]
     assert order == [f"/public-api{probe.route}" for probe in LIVE_MATRIX]
 
@@ -277,3 +366,227 @@ def test_main_exit_code_reflects_classifications(monkeypatch, tmp_path, classifi
         assert exc.value.code == expected
     else:
         module.main([])
+
+
+def test_category_results_map_fixtures_required_by_contract() -> None:
+    shape = _probe("cmc_crypto_category").shape
+    category = {"id": "605e2ce9d41eae1066535f7c", "coins": [_QUOTED]}
+    assert _shape_check({"1": category}, shape)
+    assert _shape_check({"1": {**category, "coins": []}}, shape)  # empty coins accepted
+    assert _shape_check({"any-provider-key": category}, shape)  # outer keys not interpreted
+    for rejected in (
+        {},  # empty outer map
+        {"1": "not-a-mapping"},
+        {"1": {"coins": []}},  # missing id
+        {"1": {"id": "", "coins": []}},
+        {"1": {"id": 1, "coins": []}},
+        {"1": {"id": "605e", "coins": "x"}},  # non-list coins
+        category,  # data is not itself the category object (C2)
+    ):
+        with pytest.raises(ValueError, match="minimum endpoint shape did not pass"):
+            _shape_check(rejected, shape)
+
+
+@pytest.mark.asyncio
+async def test_category_probe_reuses_category_id_from_categories_probe() -> None:
+    seen: list[tuple[str, dict[str, str]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, dict(request.url.params)))
+        if request.url.path.endswith(ROUTES["cmc_crypto_categories"]):
+            return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_categories"]))
+        return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_category"]))
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_categories", "cmc_crypto_category"},
+            client_factory=lambda: client,
+        )
+    assert [route["classification"] for route in report["routes"]] == ["SUPPORTED", "SUPPORTED"]
+    assert seen == [
+        ("/public-api/v1/cryptocurrency/categories", {"start": "1", "limit": "1"}),
+        (
+            "/public-api/v1/cryptocurrency/category",
+            {"id": "605e2ce9d41eae1066535f7c", "start": "1", "limit": "1", "convert": "USD"},
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_category_probe_alone_looks_up_one_category_id_first() -> None:
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith(ROUTES["cmc_crypto_categories"]):
+            return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_categories"]))
+        assert request.url.params["id"] == "605e2ce9d41eae1066535f7c"
+        return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_category"]))
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_category"}, client_factory=lambda: client
+        )
+    assert report["routes"][0]["classification"] == "SUPPORTED"
+    assert paths == [
+        "/public-api/v1/cryptocurrency/categories",
+        "/public-api/v1/cryptocurrency/category",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("categories", [[], [{"id": ""}], [{"id": 5}], ["x"], {"id": "a"}])
+async def test_category_probe_without_a_category_id_is_not_a_category_mismatch(categories) -> None:
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=_envelope(categories))
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_category"}, client_factory=lambda: client
+        )
+    route = report["routes"][0]
+    assert route["classification"] == "TRANSIENT_ERROR"
+    assert (route["http_status"], route["cmc_error_code"], route["attempts"]) == (None, None, 0)
+    assert route["evidence"] == (
+        "category id lookup on /v1/cryptocurrency/categories returned no category id; "
+        "/v1/cryptocurrency/category was not called"
+    )
+    assert paths == ["/public-api/v1/cryptocurrency/categories"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response", "classification", "code"),
+    [
+        (httpx.Response(429), "RATE_LIMITED", "RATE_LIMITED"),
+        (httpx.Response(503), "TRANSIENT_ERROR", "UPSTREAM_5XX"),
+        (
+            httpx.Response(
+                200,
+                json={
+                    "status": {"error_code": 1, "error_message": "route unavailable"},
+                    "data": None,
+                },
+            ),
+            "TRANSIENT_ERROR",
+            "UPSTREAM_APPLICATION_ERROR",
+        ),
+    ],
+)
+async def test_category_lookup_failure_is_attributed_to_the_lookup_not_the_category_route(
+    response, classification, code
+) -> None:
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return response
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False, max_attempts=1
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_category"}, client_factory=lambda: client
+        )
+    route = report["routes"][0]
+    assert route["classification"] == classification
+    assert (route["http_status"], route["cmc_error_code"], route["attempts"]) == (None, None, 0)
+    assert route["evidence"] == (
+        f"category id lookup on /v1/cryptocurrency/categories failed ({code}); "
+        "/v1/cryptocurrency/category was not called"
+    )
+    assert paths == ["/public-api/v1/cryptocurrency/categories"]
+
+
+def test_e1r_probes_use_minimal_contract_queries() -> None:
+    assert _probe("cmc_simple_price").params == {"id": "1", "convert": "USD"}
+    assert _probe("cmc_crypto_categories").params == {"start": 1, "limit": 1}
+    assert _probe("cmc_crypto_category").params == {"start": 1, "limit": 1, "convert": "USD"}
+    assert _probe("cmc_price_conversion").params == {"amount": "1", "id": 1, "convert": "USD"}
+    assert _probe("cmc_exchange_map").params == {"start": 1, "limit": 2}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        {"data": []},  # no status
+        {"status": {"error_code": 0}},  # no data
+        {"status": {"error_code": None}, "data": []},
+    ],
+)
+async def test_lookup_contract_mismatch_is_not_an_s3_contract_mismatch(malformed) -> None:
+    """D1: a malformed categories lookup must not be reported as an S3 contract mismatch."""
+
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=malformed)
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False, max_attempts=1
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_category"}, client_factory=lambda: client
+        )
+    route = report["routes"][0]
+    assert paths == ["/public-api/v1/cryptocurrency/categories"]
+    assert "/public-api/v1/cryptocurrency/category" not in paths
+    assert route["tool"] == "cmc_crypto_category"
+    assert route["classification"] == "TRANSIENT_ERROR"
+    assert route["classification"] != "CONTRACT_MISMATCH"
+    assert (route["http_status"], route["cmc_error_code"], route["attempts"]) == (None, None, 0)
+    assert route["evidence"] == (
+        "category id lookup on /v1/cryptocurrency/categories failed "
+        "(UPSTREAM_CONTRACT_MISMATCH); /v1/cryptocurrency/category was not called"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "s3_data",
+    [
+        {"id": "605e2ce9d41eae1066535f7c", "coins": []},  # category object as data (C2)
+        {},
+        {"1": {"id": "605e", "coins": "x"}},
+    ],
+)
+async def test_actual_s3_shape_failure_is_still_s3_contract_mismatch(s3_data) -> None:
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith(ROUTES["cmc_crypto_categories"]):
+            return httpx.Response(200, json=_envelope(VALID_DATA["cmc_crypto_categories"]))
+        return httpx.Response(200, json=_envelope(s3_data))
+
+    async with KeylessHttpClient(
+        _transport=httpx.MockTransport(handler), cache_enabled=False
+    ) as client:
+        report = await verify_live(
+            selected_tools={"cmc_crypto_category"}, client_factory=lambda: client
+        )
+    assert paths == [
+        "/public-api/v1/cryptocurrency/categories",
+        "/public-api/v1/cryptocurrency/category",
+    ]
+    assert report["routes"][0]["classification"] == "CONTRACT_MISMATCH"
+    assert report["routes"][0]["evidence"] == "minimum endpoint shape did not pass"
+
+
+def test_e2a_probes_use_the_contract_fixture() -> None:
+    assert _probe("cmc_dex_platform_list").params == {}
+    assert _probe("cmc_dex_token_price").params == {
+        "platform": "Ethereum",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    }

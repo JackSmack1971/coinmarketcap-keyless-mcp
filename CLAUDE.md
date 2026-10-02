@@ -41,3 +41,12 @@ The README and AGENTS.md test ladders omit ruff and `uv lock --check`; CI enforc
 ## Git
 
 Follow `VERSION_CONTROL.md`. No commit, push, tag or PR without explicit authorization. No generated co-author or session trailers (attribution is blanked in settings).
+
+**Standing authorization (granted by the repository owner, 2026-10-02):** on the active cloud-development branch, after each coherent implementation, remediation, contract-review or acceptance slice has passed its required verification, Claude may, without asking again:
+
+1. stage only that slice's intended files (never `git add -A` or unrelated changes);
+2. inspect the staged diff (`git diff --staged`) before committing;
+3. create one coherent commit for the slice;
+4. push the branch with a normal, non-force push.
+
+This does not authorize merging, opening a PR, force-pushing, amending or rewriting published commits, tagging, releasing, or including unrelated changes; each still needs separate explicit authorization. A slice instruction that says not to commit or push overrides this standing authorization for that slice.

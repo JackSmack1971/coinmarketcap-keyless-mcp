@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R contract approved with implementation not started; E2-A contract approved with implementation blocked until `E1R_ACCEPTED`; v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -156,7 +156,7 @@ The required non-live gates passed on 2026-10-02: focused E1 tests, Ruff check/f
 
 E1-R reconstructs the same five approved Standard additions (S1–S5) from a fresh, pre-implementation contract review rather than recovering lost code. S1 remains `/v2/simple/price`; E0 scope and N = 32 are unchanged. The contract, clarifications C1–C4 and acceptance conditions are recorded in `verification/v1.1-e1r-contract-review.md`. Historical E1 results (123 focused tests, 471 full-suite tests, 93.5% mutation score) are context only, not acceptance targets.
 
-**E1-R contract status: `E1R_CONTRACT_APPROVED` — `IMPLEMENTATION NOT STARTED`.** This token authorizes implementation of S1–S5 only. Acceptance requires a separate independent review recording `E1R_ACCEPTED`; it does not accept the v1.1.0 release or satisfy the 32/32 live release gate.
+**E1-R status: `E1R_ACCEPTED` (2026-10-02).** The contract (`E1R_CONTRACT_APPROVED`) authorized implementation of S1–S5 only; the implementation passed the non-live gates, the mutation gate (93.4%) and an independent review recorded in `verification/v1.1-e1r-contract-review.md`. Acceptance does not accept the v1.1.0 release or satisfy the 32/32 live release gate.
 
 ## 4.2 E2-A DEX identity foundation contract review
 
@@ -166,9 +166,7 @@ The review used minimal credential-free live evidence on 2026-10-02 to resolve p
 
 The approved contract preserves provider envelopes unchanged, keeps the fixed keyless base and GET-only one-tool/one-route invariants, uses a strict empty schema for platform-list, and requires bounded case-preserving `platform` and `address` inputs for token-price with exact provider serialization. D5 remains deferred; D15 and D17 remain excluded.
 
-**E2-A contract status: `E2A_CONTRACT_APPROVED` — `IMPLEMENTATION NOT STARTED`.** This token authorizes implementation of D11+D4 only. It does not accept E2-A implementation, authorize E2-B, or satisfy any part of the 32/32 live release gate.
-
-**E2-A implementation is blocked until `E1R_ACCEPTED` is recorded** (added 2026-10-02 with §4.1a). The E2-A contract approval itself is unchanged.
+**E2-A status: `E2A_ACCEPTED` (2026-10-02).** The contract (`E2A_CONTRACT_APPROVED`) authorized implementation of D11+D4 only; the implementation passed the non-live gates, the mutation gate (93.5%, with automated mutants for D4 query construction all killed) and an independent re-review recorded in `verification/v1.1-e2a-contract-review.md`. Acceptance does not authorize E2-B or any other DEX route, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 

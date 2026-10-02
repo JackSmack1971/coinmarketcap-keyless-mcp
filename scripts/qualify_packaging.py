@@ -44,7 +44,7 @@ from coinmarketcap_keyless_mcp.contracts import TOOL_CONTRACTS
 from importlib.metadata import version
 
 expected = [c.name for c in TOOL_CONTRACTS]
-assert len(expected) == 13
+assert len(expected) == 20
 package_path = Path(__import__("coinmarketcap_keyless_mcp").__file__).resolve()
 assert Path(sys.prefix).resolve() in package_path.parents, (sys.prefix, package_path)
 assert "src" not in package_path.parts
@@ -67,7 +67,7 @@ async def main():
         assert result.structured_content == {"status":{"error_code":0,"notice":None},"data":{"fixture":True}}
 
 asyncio.run(main())
-print("installed import, 13-tool console discovery, mocked call, and clean stdio shutdown passed")
+print("installed import, 20-tool console discovery, mocked call, and clean stdio shutdown passed")
 """
 
 
@@ -252,7 +252,7 @@ async def main():
   try: await asyncio.wait_for(task, timeout=10)
   except asyncio.CancelledError: pass
 asyncio.run(main())
-print("installed Streamable HTTP startup, 13-tool discovery, fixture call, and clean shutdown passed")
+print("installed Streamable HTTP startup, 20-tool discovery, fixture call, and clean shutdown passed")
 """
     harness_file = parent / "http_harness.py"
     harness_file.write_text(harness, encoding="utf-8")
