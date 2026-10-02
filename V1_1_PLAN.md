@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) contract approved (`E2B_CONTRACT_APPROVED`, 2026-10-02), implementation not started; v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) implemented and independently accepted (`E2B_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -174,7 +174,7 @@ E2-B is limited to D3 `cmc_dex_token` (`GET /v1/dex/token`). Its public contract
 
 The contract reuses E2-A's `DexPlatform` and `DexAddress` unchanged, serializes exactly `platform` and `address` through a dedicated top-level helper, uses a 15-second cache TTL, preserves the provider envelope and `TokenDetailDTO` unchanged, and applies the existing error taxonomy and 2 MiB cap. Current official documentation plus accepted E2-A identity evidence resolved the contract; no live probe was made. The verifier minimum (non-empty mapping with non-empty string `addr`) is documentation-derived and live D3 verification is pending.
 
-**E2-B status: `E2B_CONTRACT_APPROVED` (2026-10-02) — D3 only, implementation not started.** An independent review returned REVISE (imprecise error-code naming); after contract-only remediation, re-review approved. This does not authorize D6, D12 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+**E2-B status: `E2B_ACCEPTED` (2026-10-02) — D3 only.** The contract (`E2B_CONTRACT_APPROVED`) authorized implementation of D3 only; implementation `3941e36` passed the non-live gates, the mutation gate (93.5%, all four automated `dex_token_params` mutants killed, seven hand mutations killed) and an independent implementation review recorded in `verification/v1.1-e2b-contract-review.md`. Live D3 verification is pending. Acceptance does not authorize D6, D12 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 
