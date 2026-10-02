@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R implemented and independently accepted (`E1R_ACCEPTED`, 2026-10-02); E2-A (D11 + D4) implemented and independently accepted (`E2A_ACCEPTED`, 2026-10-02); E2-B (D3) contract approved (`E2B_CONTRACT_APPROVED`, 2026-10-02), implementation not started; v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -167,6 +167,14 @@ The review used minimal credential-free live evidence on 2026-10-02 to resolve p
 The approved contract preserves provider envelopes unchanged, keeps the fixed keyless base and GET-only one-tool/one-route invariants, uses a strict empty schema for platform-list, and requires bounded case-preserving `platform` and `address` inputs for token-price with exact provider serialization. D5 remains deferred; D15 and D17 remain excluded.
 
 **E2-A status: `E2A_ACCEPTED` (2026-10-02).** The contract (`E2A_CONTRACT_APPROVED`) authorized implementation of D11+D4 only; the implementation passed the non-live gates, the mutation gate (93.5%, with automated mutants for D4 query construction all killed) and an independent re-review recorded in `verification/v1.1-e2a-contract-review.md`. Acceptance does not authorize E2-B or any other DEX route, and does not satisfy any part of the 32/32 live release gate.
+
+## 4.3 E2-B DEX token detail contract review
+
+E2-B is limited to D3 `cmc_dex_token` (`GET /v1/dex/token`). Its public contract was reviewed before implementation and is recorded in `verification/v1.1-e2b-contract-review.md`.
+
+The contract reuses E2-A's `DexPlatform` and `DexAddress` unchanged, serializes exactly `platform` and `address` through a dedicated top-level helper, uses a 15-second cache TTL, preserves the provider envelope and `TokenDetailDTO` unchanged, and applies the existing error taxonomy and 2 MiB cap. Current official documentation plus accepted E2-A identity evidence resolved the contract; no live probe was made. The verifier minimum (non-empty mapping with non-empty string `addr`) is documentation-derived and live D3 verification is pending.
+
+**E2-B status: `E2B_CONTRACT_APPROVED` (2026-10-02) — D3 only, implementation not started.** An independent review returned REVISE (imprecise error-code naming); after contract-only remediation, re-review approved. This does not authorize D6, D12 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
 ## 5. Planning hierarchy and change control
 
