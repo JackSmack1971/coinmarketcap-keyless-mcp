@@ -2,7 +2,7 @@
 
 `coinmarketcap-keyless-mcp` is a bounded, read-only Model Context Protocol (MCP) server for selected CoinMarketCap Keyless Public API routes. It requires no CoinMarketCap account, API key, secret, wallet, or authentication header. Upstream access is fixed to `https://pro-api.coinmarketcap.com/public-api` and uses `GET` only.
 
-The v1 surface is deliberately narrow: exactly 13 typed tools, each mapped to one allowlisted route. It does not expose a generic URL/path proxy, authenticated fallback, or DEX tools.
+The surface is deliberately narrow: exactly 20 typed tools, each mapped to one allowlisted route. These are the 13 v1 tools, plus five Standard tools and two read-only DEX identity tools added in v1.1 (see [`V1_1_PLAN.md`](V1_1_PLAN.md)). It does not expose a generic URL/path proxy, authenticated fallback, or any other DEX route.
 
 ## Tool catalog
 
@@ -21,8 +21,15 @@ The v1 surface is deliberately narrow: exactly 13 typed tools, each mapped to on
 | `cmc_cmc100_historical` | `/v3/index/cmc100-historical` | Read bounded CMC100 historical values. |
 | `cmc_cmc20_latest` | `/v3/index/cmc20-latest` | Read the current CMC20 value, constituents, and weights. |
 | `cmc_cmc20_historical` | `/v3/index/cmc20-historical` | Read bounded CMC20 historical values. |
+| `cmc_simple_price` | `/v2/simple/price` | Read the latest simple price for known assets. |
+| `cmc_crypto_categories` | `/v1/cryptocurrency/categories` | List cryptocurrency categories and their IDs. |
+| `cmc_crypto_category` | `/v1/cryptocurrency/category` | Read one category and a page of its coins. |
+| `cmc_price_conversion` | `/v2/tools/price-conversion` | Convert an amount of one cryptocurrency into one target currency. |
+| `cmc_exchange_map` | `/v1/exchange/map` | Resolve exchange IDs and slugs. |
+| `cmc_dex_platform_list` | `/v1/dex/platform/list` | List the blockchain platforms supported by CoinMarketCap DEX data. |
+| `cmc_dex_token_price` | `/v1/dex/token/price` | Read the current DEX price of one token by platform name and contract address. |
 
-Numeric CMC IDs are preferred over ticker symbols where practical because symbols can be ambiguous. Tool schemas reject unknown arguments, enforce bounded list/pagination inputs, and validate cross-field constraints locally.
+Numeric CMC IDs are preferred over ticker symbols where practical because symbols can be ambiguous. Tool schemas reject unknown arguments, enforce bounded list/pagination inputs, and validate cross-field constraints locally. `cmc_dex_token_price` passes the platform name and token address through with their case unchanged; use `cmc_dex_platform_list` to find accepted platform names.
 
 ## Requirements and development
 
@@ -59,7 +66,7 @@ The secondary Streamable HTTP transport is intended for local use. It binds to `
 uv run coinmarketcap-keyless-mcp --transport streamable-http
 ```
 
-Use `--host` and `--port` to choose the local bind address and port, for example `--host 127.0.0.1 --port 8001`. This is not an internet-facing hosted service: the HTTP transport has no authentication, so anyone who can reach it can spend this machine's keyless CoinMarketCap rate limit. Binding to a non-loopback host such as `0.0.0.0` logs a warning to stderr. Both transports expose the same 13 tools and schemas.
+Use `--host` and `--port` to choose the local bind address and port, for example `--host 127.0.0.1 --port 8001`. This is not an internet-facing hosted service: the HTTP transport has no authentication, so anyone who can reach it can spend this machine's keyless CoinMarketCap rate limit. Binding to a non-loopback host such as `0.0.0.0` logs a warning to stderr. Both transports expose the same 20 tools and schemas.
 
 ## Behavior and errors
 
@@ -77,7 +84,7 @@ Live verification is opt-in and separate from ordinary offline tests:
 uv run python -m coinmarketcap_keyless_mcp.verify_live
 ```
 
-It serially probes the 13 minimal route calls against the fixed keyless base URL without credentials and writes a timestamped, minimized JSON report under [`verification/`](verification/). To rerun one selected ambiguous or transient route:
+It serially probes one minimal call for each of the 20 routes against the fixed keyless base URL without credentials and writes a timestamped, minimized JSON report under [`verification/`](verification/). To rerun one selected ambiguous or transient route:
 
 ```bash
 uv run python -m coinmarketcap_keyless_mcp.verify_live --tool cmc_quotes_latest
@@ -94,6 +101,8 @@ Classifications are:
 The command exits `0` only when every probed route is `SUPPORTED`, `1` otherwise, and `2` if the run or evidence write fails.
 
 The current release evidence is `verification/live-capability-20261001T151943758586Z.json`, produced by the manual `live-release-qualification.yml` workflow (run `36883326560`) on the exact `1.0.2` release commit `b486dec35b0a6849abaa5f0ade8633b08ebafa4a`; see [`verification/release-1.0.2.md`](verification/release-1.0.2.md). It records all 13 released routes as `SUPPORTED` with HTTP 200 and provider error code 0, the exact fixed base URL, timestamps, no credentials, and server version `1.0.2`; reports intentionally retain no full provider payloads. The status is `LIVE_KEYLESS_CORE_VERIFIED`. The earlier Phase 5 evidence for pre-release `0.1.0` (`verification/live-capability-20261001T015531675887Z.json`, with the selected historical-route rerun in `verification/live-capability-20261001T015419204714Z.json`) is kept for history. CoinMarketCap can change keyless coverage or rate-limit behavior, so rerun the full command or a selected route after provider changes and before a later release qualification. Do not infer unsupported capability from one 429 or transient failure.
+
+That evidence covers the 13 v1 routes only. The seven v1.1 routes have mocked, non-live verification and independent acceptance records (`verification/v1.1-e1r-contract-review.md`, `verification/v1.1-e2a-contract-review.md`), but no live evidence yet; the v1.1 live release gate is still pending.
 
 ## Tests
 
@@ -114,9 +123,9 @@ Tests use fixtures, mocks, local subprocesses, and a localhost HTTP server; they
 
 ## Explicit non-goals
 
-This v1 package provides no trading, order placement, wallets, signing, custody, transactions, credentials, API-key configuration, authenticated fallback, DEX surface, generic proxy, investment advice, portfolio construction, or locally derived investment-advice logic. It does not silently transform provider values into locally derived indicators.
+This package provides no trading, order placement, wallets, signing, custody, transactions, credentials, API-key configuration, authenticated fallback, DEX surface beyond the two read-only DEX tools above, generic proxy, investment advice, portfolio construction, or locally derived investment-advice logic. It does not silently transform provider values into locally derived indicators.
 
-The exact contract is encoded in [`src/coinmarketcap_keyless_mcp/contracts.py`](src/coinmarketcap_keyless_mcp/contracts.py), and the product boundary is defined in [`PLAN.md`](PLAN.md).
+The exact contract is encoded in [`src/coinmarketcap_keyless_mcp/contracts.py`](src/coinmarketcap_keyless_mcp/contracts.py), and the product boundary is defined in [`PLAN.md`](PLAN.md) and, for the v1.1 additions, [`V1_1_PLAN.md`](V1_1_PLAN.md).
 
 ## License
 
