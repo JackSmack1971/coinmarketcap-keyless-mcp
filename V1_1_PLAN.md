@@ -200,6 +200,14 @@ The contract reuses the public `platform` + `address` arguments with E2-A's `Dex
 
 **E2-E status: `E2E_ACCEPTED` (2026-10-02) — D8 only.** The contract (`E2E_CONTRACT_APPROVED`) authorized D8 only; the implementation (`045812c`) passed the non-live gates, the mutation gate (93.6%, all `dex_security_detail_params` mutants killed) and an independent implementation review recorded in `verification/v1.1-e2e-contract-review.md`. Live D8 verification is pending. Acceptance does not authorize D6 or any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
 
+## 4.7 E2-F DEX token pools contract review
+
+E2-F is limited to D6 `cmc_dex_token_pools` (`GET /v1/dex/token/pools`). Its public contract was reviewed before implementation and is recorded in `verification/v1.1-e2f-contract-review.md`.
+
+The contract reuses the public `platform` + `address` arguments, with E2-A's `DexPlatform` and `DexAddress` unchanged. A dedicated top-level helper, `models.dex_token_pools_params`, serializes them as exactly `{"platform": <platform>, "address": <address>}`. The documented provider `size` parameter (`int32`, default 20) has no documented bounds, so it is deliberately not exposed and not serialized: the provider default applies, and a `size` argument is rejected as unknown. The cache TTL is 15 seconds, matching the identical pool fields in D3. The provider envelope and the pool array pass through unchanged, and the existing error taxonomy and 2 MiB cap apply. The verifier minimum is that `data` is a list whose elements are all mappings; an empty array is valid and no field is required. This minimum is documentation-derived, and live D6 verification is pending. Verifier logic stays in `verify_live.py` and is pinned by focused tests and predefined hand mutations, with no mutmut configuration change.
+
+**E2-F status: `E2F_CONTRACT_APPROVED` (2026-10-02) — D6 only; implementation not started.** Approval does not authorize any other DEX route, does not change N = 32, and does not satisfy any part of the 32/32 live release gate.
+
 ## 5. Planning hierarchy and change control
 
 1. Active user request and explicit approved amendments.
