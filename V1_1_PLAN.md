@@ -1,6 +1,6 @@
 # v1.1 Expansion Plan — `coinmarketcap-keyless-mcp`
 
-**Status:** E0 accepted; E1 accepted after retrospective review and F1 remediation; E2-A contract approved with implementation not started; v1.1.0 live release gate pending
+**Status:** E0 accepted; historical E1 acceptance superseded for current-code purposes (accepted E1 code unavailable); E1-R contract approved with implementation not started; E2-A contract approved with implementation blocked until `E1R_ACCEPTED`; v1.1.0 live release gate pending
 **Audience:** Repository maintainers and implementation agents
 **Plan date:** 2026-10-01
 **Historical baseline:** [`PLAN.md`](PLAN.md) defines the frozen v1 contract and remains unchanged.
@@ -150,6 +150,14 @@ The required non-live gates passed on 2026-10-02: focused E1 tests, Ruff check/f
 
 **E1 status: `E1_ACCEPTED`.** This is retrospective acceptance of the five Standard additions only; it does not erase the sequencing deviation, accept the v1.1.0 release, or satisfy the 32/32 live release gate. See `verification/v1.1-e1-standard.md`.
 
+**Superseded for current-code purposes (2026-10-02):** the implementation accepted above is absent from every reachable branch, including `origin/main` at `1f01437`. This historical `E1_ACCEPTED` record is preserved unchanged as chronology but applies to no current code and does not transfer to any reconstruction.
+
+## 4.1a E1-R clean-room reconstruction contract
+
+E1-R reconstructs the same five approved Standard additions (S1–S5) from a fresh, pre-implementation contract review rather than recovering lost code. S1 remains `/v2/simple/price`; E0 scope and N = 32 are unchanged. The contract, clarifications C1–C4 and acceptance conditions are recorded in `verification/v1.1-e1r-contract-review.md`. Historical E1 results (123 focused tests, 471 full-suite tests, 93.5% mutation score) are context only, not acceptance targets.
+
+**E1-R contract status: `E1R_CONTRACT_APPROVED` — `IMPLEMENTATION NOT STARTED`.** This token authorizes implementation of S1–S5 only. Acceptance requires a separate independent review recording `E1R_ACCEPTED`; it does not accept the v1.1.0 release or satisfy the 32/32 live release gate.
+
 ## 4.2 E2-A DEX identity foundation contract review
 
 E2-A is limited to D11 `cmc_dex_platform_list` (`GET /v1/dex/platform/list`) and D4 `cmc_dex_token_price` (`GET /v1/dex/token/price`). Its public contract was reviewed before implementation and is recorded in `verification/v1.1-e2a-contract-review.md`.
@@ -159,6 +167,8 @@ The review used minimal credential-free live evidence on 2026-10-02 to resolve p
 The approved contract preserves provider envelopes unchanged, keeps the fixed keyless base and GET-only one-tool/one-route invariants, uses a strict empty schema for platform-list, and requires bounded case-preserving `platform` and `address` inputs for token-price with exact provider serialization. D5 remains deferred; D15 and D17 remain excluded.
 
 **E2-A contract status: `E2A_CONTRACT_APPROVED` — `IMPLEMENTATION NOT STARTED`.** This token authorizes implementation of D11+D4 only. It does not accept E2-A implementation, authorize E2-B, or satisfy any part of the 32/32 live release gate.
+
+**E2-A implementation is blocked until `E1R_ACCEPTED` is recorded** (added 2026-10-02 with §4.1a). The E2-A contract approval itself is unchanged.
 
 ## 5. Planning hierarchy and change control
 
