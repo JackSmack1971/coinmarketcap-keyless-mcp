@@ -39,7 +39,7 @@ Optional hardening after the first successful ChatGPT connection:
 ## Runtime behavior
 
 - `stdio`: unchanged; no OAuth.
-- loopback `streamable-http`: unchanged unless the OAuth environment variables are explicitly supplied.
+- loopback `streamable-http`: always remains local and unauthenticated; remote OAuth environment variables are ignored on loopback binds.
 - non-loopback `streamable-http`: refuses startup without OAuth configuration.
 - authenticated non-loopback HTTP: exposes `/mcp`, RFC 9728 protected-resource metadata, OAuth authorization-server metadata, `/authorize`, and `/token`.
 
