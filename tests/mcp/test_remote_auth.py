@@ -14,11 +14,7 @@ from coinmarketcap_keyless_mcp.runtime import run_server
 
 
 def _challenge(verifier: str) -> str:
-    return (
-        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
-        .decode()
-        .rstrip("=")
-    )
+    return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
 
 
 def _app(oauth: RemoteOAuth) -> Starlette:
@@ -206,3 +202,27 @@ async def test_authorize_rejects_wrong_resource_and_redirect() -> None:
         )
         assert bad_resource.status_code == 400
         assert bad_resource.json()["error"] == "invalid_target"
+
+
+@pytest.mark.asyncio
+async def test_malformed_tokens_and_form_bodies_fail_closed() -> None:
+    oauth = RemoteOAuth(
+        RemoteOAuthConfig(
+            issuer_url="https://example.test",
+            resource_url="https://example.test/mcp",
+            signing_key=b"m" * 32,
+        )
+    )
+    assert await oauth.verify_token("v1.@@@.@@@") is None
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app(oauth)),
+        base_url="https://example.test",
+    ) as client:
+        response = await client.post(
+            "/token",
+            content=b"\xff\xfe",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert response.status_code == 400
+        assert response.json()["error"] == "invalid_request"
