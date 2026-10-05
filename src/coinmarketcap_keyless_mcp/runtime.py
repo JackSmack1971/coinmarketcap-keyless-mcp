@@ -75,15 +75,16 @@ async def run_server(
         if transport == "stdio":
             await server.run_stdio_async()
         elif transport == "streamable-http":
-            auth_config = RemoteOAuthConfig.from_env()
-            if not _is_loopback(host) and auth_config is None:
-                raise RuntimeError(
-                    "non-loopback Streamable HTTP requires OAuth: set CMC_MCP_PUBLIC_URL "
-                    "and CMC_MCP_OAUTH_SIGNING_KEY"
-                )
-            authenticated = auth_config is not None
-            if auth_config is not None:
+            authenticated = False
+            if not _is_loopback(host):
+                auth_config = RemoteOAuthConfig.from_env()
+                if auth_config is None:
+                    raise RuntimeError(
+                        "non-loopback Streamable HTTP requires OAuth: set CMC_MCP_PUBLIC_URL "
+                        "and CMC_MCP_OAUTH_SIGNING_KEY"
+                    )
                 configure_remote_oauth(server, auth_config)
+                authenticated = True
             await _run_streamable_http(
                 server,
                 host=host,
