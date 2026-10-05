@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from .client import KeylessHttpClient
+from .remote_auth import RemoteOAuthConfig, configure_remote_oauth
 from .server import create_server
 
 Transport = Literal["stdio", "streamable-http"]
@@ -74,7 +75,21 @@ async def run_server(
         if transport == "stdio":
             await server.run_stdio_async()
         elif transport == "streamable-http":
-            await _run_streamable_http(server, host=host, port=port)
+            auth_config = RemoteOAuthConfig.from_env()
+            if not _is_loopback(host) and auth_config is None:
+                raise RuntimeError(
+                    "non-loopback Streamable HTTP requires OAuth: set CMC_MCP_PUBLIC_URL "
+                    "and CMC_MCP_OAUTH_SIGNING_KEY"
+                )
+            authenticated = auth_config is not None
+            if auth_config is not None:
+                configure_remote_oauth(server, auth_config)
+            await _run_streamable_http(
+                server,
+                host=host,
+                port=port,
+                authenticated=authenticated,
+            )
         else:  # pragma: no cover - argparse constrains the production path.
             raise ValueError(f"unsupported transport: {transport}")
     finally:
@@ -83,17 +98,21 @@ async def run_server(
             await _complete_cleanup(close())
 
 
-async def _run_streamable_http(server: object, *, host: str, port: int) -> None:
+async def _run_streamable_http(
+    server: object,
+    *,
+    host: str,
+    port: int,
+    authenticated: bool = False,
+) -> None:
     """Serve the SDK's Streamable HTTP app with cancellable cleanup."""
 
     import uvicorn
 
     if not _is_loopback(host):
-        logger.warning(
-            "Streamable HTTP is bound to non-loopback host %s with no authentication; "
-            "anyone who can reach it can spend this IP's keyless CoinMarketCap rate limit",
-            host,
-        )
+        if not authenticated:
+            raise RuntimeError("non-loopback Streamable HTTP must be authenticated")
+        logger.info("serving authenticated Streamable HTTP on non-loopback host %s", host)
     app = server.streamable_http_app(host=host)  # type: ignore[attr-defined]
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     http_server = uvicorn.Server(config)
