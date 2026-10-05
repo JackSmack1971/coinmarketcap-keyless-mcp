@@ -269,7 +269,9 @@ class RemoteOAuth:
     async def token(self, request: Request) -> Response:
         form = self._form(await request.body())
         if form is None:
-            return self._oauth_error("invalid_request", "token request body must be UTF-8 form data")
+            return self._oauth_error(
+                "invalid_request", "token request body must be UTF-8 form data"
+            )
         client_id = form.get("client_id", "")
         if not self._accepted_client(client_id):
             return self._oauth_error("invalid_client", "client is not allowed", 401)
