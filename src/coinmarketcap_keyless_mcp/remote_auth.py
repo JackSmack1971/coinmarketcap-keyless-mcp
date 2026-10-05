@@ -8,6 +8,7 @@ host's keyless upstream rate limit.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -66,9 +67,7 @@ class RemoteOAuthConfig:
         if parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback):
             raise RuntimeError("CMC_MCP_PUBLIC_URL must use HTTPS unless it is loopback")
         if parsed.query or parsed.fragment or not parsed.netloc:
-            raise RuntimeError(
-                "CMC_MCP_PUBLIC_URL must be an origin URL without query or fragment"
-            )
+            raise RuntimeError("CMC_MCP_PUBLIC_URL must be an origin URL without query or fragment")
         if len(key.encode("utf-8")) < 32:
             raise RuntimeError("CMC_MCP_OAUTH_SIGNING_KEY must contain at least 32 bytes")
         return cls(
@@ -113,9 +112,7 @@ class RemoteOAuth:
             "jti": secrets.token_urlsafe(18),
             **payload,
         }
-        encoded = _b64url(
-            json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        )
+        encoded = _b64url(json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8"))
         signature = _b64url(
             hmac.new(
                 self.config.signing_key,
@@ -140,26 +137,27 @@ class RemoteOAuth:
             if not hmac.compare_digest(signature, expected):
                 return None
             payload = json.loads(_b64url_decode(encoded))
+            if not isinstance(payload, dict):
+                return None
             if payload.get("v") != 1 or payload.get("kind") != kind:
                 return None
             if int(payload.get("exp", 0)) <= int(time.time()):
                 return None
             return payload
-        except (ValueError, TypeError, json.JSONDecodeError):
+        except (binascii.Error, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
             return None
 
     @staticmethod
-    def _form(body: bytes) -> dict[str, str]:
-        parsed = parse_qs(
-            body.decode("utf-8"),
-            keep_blank_values=True,
-            strict_parsing=False,
-        )
-        return {
-            key: values[0]
-            for key, values in parsed.items()
-            if len(values) == 1
-        }
+    def _form(body: bytes) -> dict[str, str] | None:
+        try:
+            parsed = parse_qs(
+                body.decode("utf-8"),
+                keep_blank_values=True,
+                strict_parsing=False,
+            )
+        except UnicodeDecodeError:
+            return None
+        return {key: values[0] for key, values in parsed.items() if len(values) == 1}
 
     @staticmethod
     def _oauth_error(error: str, description: str, status: int = 400) -> JSONResponse:
@@ -241,9 +239,7 @@ class RemoteOAuth:
         for jti in expired:
             store.pop(jti, None)
         if len(store) > 4096:
-            for jti, _ in sorted(store.items(), key=lambda item: item[1])[
-                : len(store) - 4096
-            ]:
+            for jti, _ in sorted(store.items(), key=lambda item: item[1])[: len(store) - 4096]:
                 store.pop(jti, None)
 
     def _consume(self, payload: dict[str, Any], store: dict[str, int]) -> bool:
@@ -272,6 +268,8 @@ class RemoteOAuth:
 
     async def token(self, request: Request) -> Response:
         form = self._form(await request.body())
+        if form is None:
+            return self._oauth_error("invalid_request", "token request body must be UTF-8 form data")
         client_id = form.get("client_id", "")
         if not self._accepted_client(client_id):
             return self._oauth_error("invalid_client", "client is not allowed", 401)
