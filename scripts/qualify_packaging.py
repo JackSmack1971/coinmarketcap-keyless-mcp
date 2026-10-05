@@ -29,6 +29,7 @@ EXPECTED_MODULES = {
     "contracts.py",
     "errors.py",
     "models.py",
+    "remote_auth.py",
     "runtime.py",
     "server.py",
     "verify_live.py",
